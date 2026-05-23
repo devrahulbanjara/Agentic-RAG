@@ -23,7 +23,6 @@ logs: ## Show service logs
 health: ## Check all services health
 	@echo "Checking service health..."
 	@curl -s http://localhost:8000/health | jq . || echo "API not responding"
-	@curl -s http://localhost:9200/_cluster/health | jq . || echo "OpenSearch not responding"
 	@curl -s http://localhost:8080/api/v2/monitor/health || echo "Airflow not responding"
 	@curl -s http://localhost:11434/api/version | jq . || echo "Ollama not responding"
 

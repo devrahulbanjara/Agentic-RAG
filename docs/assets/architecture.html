@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Production Grade RAG Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #f5f5f2;
+    color: #111827;
+    overflow-x: auto;
+    min-width: 2160px;
+  }
+  .subtitle {
+    position: absolute;
+    top: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 13px;
+    color: #6b7280;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    z-index: 20;
+  }
+  .canvas {
+    position: relative;
+    width: 2160px;
+    padding: 60px 48px;
+    margin: 0 auto;
+  }
+  .group {
+    position: absolute;
+    background: rgba(255,255,255,0.7);
+    border: 1px solid #d1d5db;
+    border-radius: 12px;
+    padding: 16px 18px 18px 18px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  }
+  .group.dashed { border-style: dashed; }
+  .group__header {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .group__header svg { width: 17px; height: 17px; }
+  .group__badge {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: none;
+    background: #ccfbf1;
+    color: #0d9488;
+    padding: 3px 7px;
+    border-radius: 4px;
+    margin-left: auto;
+  }
+  .grid { display: grid; gap: 10px; }
+  .grid--2 { grid-template-columns: repeat(2, 1fr); }
+  .grid--3 { grid-template-columns: repeat(3, 1fr); }
+  .grid--4 { grid-template-columns: repeat(4, 1fr); }
+  .card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    height: 88px;
+    padding: 10px 6px 8px 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 6px;
+  }
+  .card svg { width: 26px; height: 26px; color: #111827; }
+  .card__label {
+    font-size: 11px;
+    font-weight: 500;
+    color: #374151;
+    line-height: 1.2;
+  }
+  .card__sub {
+    font-size: 9px;
+    font-weight: 500;
+    color: #9ca3af;
+    line-height: 1.1;
+  }
+  .sub-section {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #0d9488;
+    margin: 0 0 8px 0;
+    padding: 0;
+  }
+  .eval-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+  .eval-col { min-width: 0; }
+  .bubble {
+    position: absolute;
+    border-radius: 999px;
+    padding: 9px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    background: #ffffff;
+    z-index: 6;
+  }
+  .bubble svg { width: 20px; height: 20px; }
+  .bubble__label { font-size: 12px; font-weight: 700; letter-spacing: 0.02em; }
+  .bubble--user { background: #059669; border: 1.5px solid #047857; color: #ffffff; }
+  .bubble--user svg { color: #ffffff; }
+  .bubble--resp { background: #2563eb; border: 1.5px solid #1d4ed8; color: #ffffff; }
+  .bubble--resp svg { color: #ffffff; }
+  .stage-zone {
+    position: absolute;
+    border-radius: 14px;
+    z-index: 0;
+    pointer-events: none;
+  }
+  .stage-zone--indexing {
+    background: rgba(124, 58, 237, 0.07);
+    border: 1.5px dashed rgba(124, 58, 237, 0.4);
+  }
+  .stage-zone--inference {
+    background: rgba(217, 119, 6, 0.07);
+    border: 1.5px dashed rgba(217, 119, 6, 0.4);
+  }
+  .stage-label {
+    position: absolute;
+    z-index: 4;
+    line-height: 1.4;
+  }
+  .stage-label__eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    margin: 0;
+  }
+  .stage-label__sub {
+    font-size: 12px;
+    font-weight: 400;
+    color: #6b7280;
+    margin: 0;
+  }
+  .stage-label--indexing .stage-label__eyebrow { color: #7c3aed; }
+  .stage-label--inference .stage-label__eyebrow { color: #d97706; }
+  svg.overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+  }
+  .connector-label {
+    font-size: 10.5px;
+    font-style: italic;
+    fill: #475569;
+    font-weight: 500;
+  }
+</style>
+</head>
+<body>
+<div class="subtitle">Production Grade RAG Architecture</div>
+<div class="canvas" id="canvas">
+  <div class="stage-zone stage-zone--indexing" id="zone-indexing"></div>
+  <div class="stage-zone stage-zone--inference" id="zone-inference"></div>
+  <div class="stage-label stage-label--indexing" id="label-indexing">
+    <div class="stage-label__eyebrow">Stage 1 — Indexing</div>
+    <div class="stage-label__sub">Offline · runs once per corpus</div>
+  </div>
+  <div class="stage-label stage-label--inference" id="label-inference">
+    <div class="stage-label__eyebrow">Stage 2 — Inference</div>
+    <div class="stage-label__sub">Runtime · per user query</div>
+  </div>
+  <svg class="overlay" id="overlay" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arrow-dark" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#374151" />
+      </marker>
+      <marker id="arrow-red" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#dc2626" />
+      </marker>
+      <marker id="arrow-teal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#0d9488" />
+      </marker>
+      <marker id="arrow-dashed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b" />
+      </marker>
+    </defs>
+  </svg>
+</div>
+
+<script>
+/* ---------------- ICON LIBRARY (inline Tabler-style outline paths) ---------------- */
+const I = {
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+  download: '<path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><path d="M7 11l5 5 5-5"/><path d="M12 4v12"/>',
+  tag: '<path d="M3 12V5a2 2 0 0 1 2-2h7l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/>',
+  brackets: '<path d="M8 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h3"/><path d="M16 4h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-3"/>',
+  columns: '<rect x="3" y="4" width="7" height="16" rx="1"/><rect x="14" y="4" width="7" height="16" rx="1"/>',
+  link: '<path d="M9 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M15 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>',
+  image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 18l-5-6-4 5-3-2-6 7"/>',
+  sigma: '<path d="M7 4h10v2l-6 6 6 6v2H7l5-8z"/>',
+  layersStack: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 17l9 5 9-5"/>',
+  fileLines: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M8 13h8M8 17h6M8 9h2"/>',
+  sitemap: '<rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="15" width="6" height="6" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><path d="M12 9v3M6 12h12M18 12V9"/><path d="M9 3h6"/>',
+  scissors: '<circle cx="6" cy="7" r="3"/><circle cx="6" cy="17" r="3"/><path d="M8.5 8.5l12 7M8.5 15.5l12-7"/>',
+  textLines: '<path d="M4 6h16M4 10h16M4 14h12M4 18h8"/>',
+  textBlock: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h10M7 17h6"/>',
+  table: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 16h18M9 4v16M15 4v16"/>',
+  docStar: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 11l1.2 2.4 2.6.3-1.9 1.8.5 2.6L12 17l-2.4 1.1.5-2.6L8.2 13.7l2.6-.3z"/>',
+  question: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7v.5"/><circle cx="12" cy="17" r="0.6"/>',
+  summarize: '<path d="M4 6h16M4 10h12M8 14h12M4 18h8"/><path d="M19 16l3 3-3 3"/>',
+  eye: '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/>',
+  scatter: '<circle cx="5" cy="18" r="1.4"/><circle cx="9" cy="11" r="1.4"/><circle cx="14" cy="14" r="1.4"/><circle cx="18" cy="6" r="1.4"/><circle cx="20" cy="13" r="1.4"/><circle cx="12" cy="7" r="1.4"/>',
+  brain: '<path d="M9 4a3 3 0 0 0-3 3v.5A3 3 0 0 0 4 10v1a3 3 0 0 0 1.5 2.6A3 3 0 0 0 6 18a3 3 0 0 0 3 2 3 3 0 0 0 3-2"/><path d="M15 4a3 3 0 0 1 3 3v.5A3 3 0 0 1 20 10v1a3 3 0 0 1-1.5 2.6A3 3 0 0 1 18 18a3 3 0 0 1-3 2 3 3 0 0 1-3-2V4"/>',
+  nodes: '<circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="18" cy="18" r="2"/><circle cx="12" cy="12" r="2"/><path d="M7.4 7.4l3.2 3.2M16.6 7.4l-3.2 3.2M7.4 16.6l3.2-3.2M16.6 16.6l-3.2-3.2"/>',
+  vectorArr: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M8 6v12M13 6v12M18 6v12"/>',
+  fork: '<path d="M6 4v4a4 4 0 0 0 4 4h4a4 4 0 0 1 4 4v4"/><path d="M3 4h6M15 16h6M15 20h6"/>',
+  expand: '<path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/><path d="M4 4l6 6M20 4l-6 6M4 20l6-6M20 20l-6-6"/>',
+  funnel: '<path d="M3 4h18l-7 9v6l-4 2v-8z"/>',
+  splitArrows: '<path d="M3 12h6"/><path d="M9 12l-2.5 4M9 12l-2.5-4"/><path d="M21 6h-6l-4 6 4 6h6"/>',
+  router: '<rect x="3" y="14" width="18" height="6" rx="1"/><circle cx="7" cy="17" r=".8"/><circle cx="11" cy="17" r=".8"/><path d="M7 14V8M12 14V4M17 14V8"/><path d="M5 6l2-2 2 2M10 2l2-2 2 2M15 6l2-2 2 2"/>',
+  highlight: '<path d="M4 14l6-6 6 6"/><path d="M4 20h16"/><path d="M9 9h6"/><path d="M11 4h2v3h-2z"/>',
+  converge: '<path d="M3 5l7 7-7 7"/><path d="M21 5l-7 7 7 7"/><path d="M10 12h4"/>',
+  sortDesc: '<path d="M4 6h12M4 10h8M4 14h5M4 18h3"/><path d="M18 6l3 4h-6z" transform="translate(-1 8)"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  layers: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
+  merge: '<path d="M5 4v5a4 4 0 0 0 4 4h6a4 4 0 0 1 4 4v3"/><path d="M3 6l2-2 2 2M17 18l2 2 2-2"/>',
+  bookmarkCheck: '<path d="M6 4h12v17l-6-4-6 4z"/><path d="M9 11l2 2 4-4"/>',
+  shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
+  list: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/>',
+  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  lightbulb: '<path d="M9 18h6"/><path d="M10 21h4"/><path d="M8 14a5 5 0 1 1 8 0c-1 1-1.5 2-1.5 3h-5C9.5 16 9 15 8 14z"/>',
+  scale: '<path d="M12 3v18"/><path d="M5 8h14"/><path d="M3 13l4-5 4 5a3 3 0 0 1-8 0z"/><path d="M13 13l4-5 4 5a3 3 0 0 1-8 0z"/>',
+  crosshair: '<circle cx="12" cy="12" r="9"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="2"/>',
+  ghost: '<path d="M5 11a7 7 0 0 1 14 0v9l-2-2-2 2-2-2-2 2-2-2-2 2-2-2z"/><circle cx="9.5" cy="11" r=".8"/><circle cx="14.5" cy="11" r=".8"/>',
+  warn: '<path d="M12 3l10 18H2z"/><path d="M12 10v5"/><circle cx="12" cy="18" r=".7"/>',
+  hand: '<path d="M7 11V5a1.5 1.5 0 0 1 3 0v5"/><path d="M10 9V4a1.5 1.5 0 0 1 3 0v6"/><path d="M13 9V5a1.5 1.5 0 0 1 3 0v7"/><path d="M16 9V7a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6h-1a5 5 0 0 1-5-5l-3-5a1.7 1.7 0 0 1 2.5-2.2L7 11"/>',
+  bar: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>',
+  bookmark: '<path d="M6 4h12v17l-6-4-6 4z"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  coin: '<circle cx="12" cy="12" r="9"/><path d="M15 9.5A2.5 2.5 0 0 0 12.5 7h-1A2.5 2.5 0 0 0 11.5 12h1a2.5 2.5 0 0 1 0 5h-1A2.5 2.5 0 0 1 9 14.5"/><path d="M12 5v2M12 17v2"/>',
+  ab: '<path d="M3 18l3-10 3 10"/><path d="M4 15h4"/><path d="M14 8h3a2 2 0 0 1 0 4h-3zM14 12h3.5a2 2 0 0 1 0 4H14zM14 8v8"/>',
+  toggle: '<rect x="2" y="7" width="20" height="10" rx="5"/><circle cx="8" cy="12" r="3"/>',
+  slider: '<path d="M4 8h16M4 16h16"/><circle cx="9" cy="8" r="2"/><circle cx="15" cy="16" r="2"/>',
+  resize: '<path d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/><path d="M9 9l6 6M9 15l6-6"/>',
+  person: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  chat: '<path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-9l-5 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/>',
+  database: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>',
+  sparkle: '<path d="M12 3v6M12 15v6M3 12h6M15 12h6"/><path d="M5.6 5.6l4.2 4.2M14.2 14.2l4.2 4.2M5.6 18.4l4.2-4.2M14.2 9.8l4.2-4.2"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+  puzzle: '<path d="M10 3a2 2 0 0 1 4 0v2h4a1 1 0 0 1 1 1v4h2a2 2 0 0 1 0 4h-2v4a1 1 0 0 1-1 1h-4v-2a2 2 0 0 0-4 0v2H6a1 1 0 0 1-1-1v-4H3a2 2 0 0 1 0-4h2V6a1 1 0 0 1 1-1h4z"/>',
+  bug: '<rect x="8" y="6" width="8" height="14" rx="4"/><path d="M8 11H4M16 11h4M8 16H4M16 16h4M8 6l-2-2M16 6l2-2"/>',
+  syringe: '<path d="M3 21l3-3"/><path d="M6 18l8-8 4 4-8 8H6v-4z"/><path d="M14 10l-2-2 5-5 2 2z"/><path d="M17 3l4 4"/><path d="M9 15l3 3"/>',
+  key: '<circle cx="7" cy="15" r="3.5"/><path d="M10 13l8-8"/><path d="M14 8l3 3"/><path d="M17 5l3 3"/>'
+};
+
+function svgIcon(name) {
+  return `<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round">${I[name]}</svg>`;
+}
+
+/* ---------------- GROUPS ---------------- */
+const groups = [
+  // ROW 1 — INDEXING (offline)
+  { id:'g1', title:'Data Sources', color:'#7c3aed', icon:'database', pos:{x:80,y:130,w:240}, cols:2,
+    children:[
+      {label:'arXiv API', icon:'globe'},
+      {label:'PDF Bulk Download', icon:'download'},
+      {label:'Paper Metadata', icon:'tag'}
+    ]},
+  { id:'g2', title:'Parsing', color:'#7c3aed', icon:'brackets', pos:{x:420,y:130,w:240}, cols:2,
+    children:[
+      {label:'Docling', icon:'columns'},
+      {label:'GROBID', icon:'link'},
+      {label:'Figure Extractor', icon:'image'},
+      {label:'LaTeX Equations', icon:'sigma'}
+    ]},
+  { id:'g3', title:'Re-Structuring', color:'#7c3aed', icon:'layersStack', pos:{x:720,y:130,w:240}, cols:2,
+    children:[
+      {label:'Document Parser', icon:'fileLines'},
+      {label:'Structure Analyzer', icon:'sitemap'},
+      {label:'Column Handler', icon:'columns'},
+      {label:'Reference Linker', icon:'link'}
+    ]},
+  { id:'g4', title:'Chunking', color:'#2563eb', icon:'scissors', pos:{x:1020,y:130,w:310}, cols:3,
+    children:[
+      {label:'Paragraph Chunks', sub:'300-500 tok', icon:'textLines'},
+      {label:'Section Chunks', sub:'1500-2500 tok', icon:'textBlock'},
+      {label:'Table Chunks', icon:'table'},
+      {label:'Figure Chunks', icon:'image'},
+      {label:'Doc Summary', icon:'docStar'}
+    ]},
+  { id:'g5', title:'Metadata Enrichment', color:'#0891b2', icon:'sparkle', pos:{x:1390,y:130,w:240}, cols:2,
+    children:[
+      {label:'Hyp. Questions', sub:'3-5 / chunk', icon:'question'},
+      {label:'Keyword Extractor', icon:'tag'},
+      {label:'Summary Generator', icon:'summarize'},
+      {label:'VLM Descriptions', sub:'figures → text', icon:'eye'}
+    ]},
+  { id:'g6', title:'Storage', color:'#059669', icon:'database', pos:{x:1690,y:130,w:310}, cols:3,
+    children:[
+      {label:'Qdrant', sub:'vector store', icon:'scatter'},
+      {label:'PostgreSQL', sub:'metadata', icon:'table'},
+      {label:'BGE-M3', sub:'embeddings', icon:'brain'},
+      {label:'HNSW Index', icon:'nodes'},
+      {label:'Content Vectors', icon:'vectorArr'},
+      {label:'Question Vectors', icon:'vectorArr'}
+    ]},
+
+  // ROW 2 — INFERENCE (runtime)
+  { id:'g7', title:'Reasoning Engine', color:'#d97706', icon:'brain', pos:{x:260,y:680,w:310}, cols:3,
+    children:[
+      {label:'Query Classifier', icon:'fork'},
+      {label:'RAG Fusion', sub:'4 variations', icon:'expand'},
+      {label:'Self-Query Parser', icon:'funnel'},
+      {label:'Decomposer', sub:'sub-questions', icon:'splitArrows'},
+      {label:'Conditional Router', icon:'router'}
+    ]},
+  { id:'g8', title:'Hybrid Retrieval', color:'#ea580c', icon:'search', pos:{x:630,y:680,w:340}, cols:3,
+    children:[
+      {label:'BM25', sub:'sparse', icon:'highlight'},
+      {label:'Dense (content)', icon:'scatter'},
+      {label:'Dense (questions)', icon:'scatter'},
+      {label:'RRF Merge', icon:'converge'},
+      {label:'Reranker', sub:'BGE-reranker', icon:'sortDesc'},
+      {label:'MMR Pass', sub:'diversity λ=0.6', icon:'funnel'}
+    ]},
+  { id:'g9', title:'Context Assembly', color:'#ea580c', icon:'puzzle', pos:{x:1030,y:680,w:240}, cols:2,
+    children:[
+      {label:'Group by Paper', icon:'folder'},
+      {label:'Neighbour Chunks', icon:'layers'},
+      {label:'Join Tables+Figs', icon:'merge'},
+      {label:'Metadata Join', icon:'link'}
+    ]},
+  { id:'g10', title:'Generation', color:'#c2410c', icon:'sparkle', pos:{x:1330,y:680,w:240}, cols:2,
+    children:[
+      {label:'LLM (Claude/GPT)', icon:'brain'},
+      {label:'Citation Validator', icon:'bookmarkCheck'},
+      {label:'Hallucination Guard', icon:'shield'},
+      {label:'Structured Output', icon:'list'}
+    ]},
+
+  // STRESS TESTING (bottom-left)
+  { id:'g12', title:'Stress Testing', color:'#ef4444', icon:'bug', pos:{x:80,y:1065,w:440}, cols:3, dashed:true,
+    children:[
+      {label:'Adversarial Queries', icon:'crosshair'},
+      {label:'Fake Paper Queries', icon:'ghost'},
+      {label:'Hallucination Probe', icon:'warn'},
+      {label:'Refusal Testing', icon:'hand'},
+      {label:'Prompt Injection', icon:'syringe'},
+      {label:'Info Evasion', icon:'key'}
+    ]}
+];
+
+/* Evaluation is a special tall panel (constructed separately) */
+const evalGroup = {
+  id:'g11', title:'Evaluation', badge:'Ragas / DeepEval', color:'#0d9488', icon:'bar',
+  pos:{x:560,y:1065,w:1500},
+  sections:[
+    { title:'Eval Dataset · 150-300 queries', cols:3, children:[
+      {label:'Factual Queries', icon:'target'},
+      {label:'Conceptual Queries', icon:'lightbulb'},
+      {label:'Comparative Queries', icon:'scale'},
+      {label:'Adversarial Queries', icon:'crosshair'}
+    ]},
+    { title:'Metrics', cols:3, children:[
+      {label:'Recall@k MRR nDCG', icon:'bar'},
+      {label:'Faithfulness', icon:'shield'},
+      {label:'Citation Accuracy', icon:'bookmark'},
+      {label:'Refusal Rate', icon:'hand'},
+      {label:'Latency P50/P95', icon:'clock'},
+      {label:'Cost $/1k queries', icon:'coin'}
+    ]},
+    { title:'Ablations', cols:3, children:[
+      {label:'Dense vs Hybrid', icon:'ab'},
+      {label:'Hyp. Q on/off', icon:'toggle'},
+      {label:'Query Routing on/off', icon:'toggle'},
+      {label:'MMR λ sweep', icon:'slider'},
+      {label:'Chunk size sweep', icon:'resize'}
+    ]}
+  ]
+};
+
+/* ---------------- LAYOUT CONSTANTS ---------------- */
+const GUTTER = 80;          // horizontal space between groups in a row
+const STANDOFF = 8;         // gap between arrow tip and group edge
+const LABEL_OFFSET = 14;    // vertical offset of label above arrow
+
+function estimateGroupHeight(g) {
+  const rows = Math.ceil(g.children.length / g.cols);
+  return 38 + rows * 88 + (rows - 1) * 10 + 34;
+}
+
+function applyRowLayout(groupIds, startX, centerY) {
+  const rowGroups = groupIds.map(id => groups.find(gr => gr.id === id)).filter(Boolean);
+  const maxH = Math.max(...rowGroups.map(estimateGroupHeight));
+  let x = startX;
+  rowGroups.forEach(g => {
+    g.pos.x = x;
+    g.pos.y = centerY - maxH / 2;
+    g.pos.minH = maxH;
+    x += g.pos.w + GUTTER;
+  });
+}
+
+// Normalize positions before rendering: equalize gutters + align row centers
+applyRowLayout(['g1','g2','g3','g4','g5','g6'], 80, 270);
+applyRowLayout(['g7','g8','g9','g10'],          360, 800);
+
+/* ---------------- RENDER GROUPS ---------------- */
+function hexToRgba(hex, a) {
+  const h = hex.replace('#','');
+  const r = parseInt(h.substring(0,2),16);
+  const g = parseInt(h.substring(2,4),16);
+  const b = parseInt(h.substring(4,6),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+function renderCard(c) {
+  return `<div class="card">${svgIcon(c.icon)}<div class="card__label">${c.label}</div>${c.sub?`<div class="card__sub">${c.sub}</div>`:''}</div>`;
+}
+
+function renderGroup(g) {
+  const el = document.createElement('div');
+  el.className = 'group' + (g.dashed ? ' dashed' : '');
+  el.setAttribute('data-group', g.id);
+  el.style.left = g.pos.x + 'px';
+  el.style.top = g.pos.y + 'px';
+  el.style.width = g.pos.w + 'px';
+  el.style.borderColor = hexToRgba(g.color, 0.30);
+  el.style.background = hexToRgba(g.color, 0.06);
+  let cardsHtml = '';
+  if (g.sections) {
+    // Horizontal multi-section layout (used by Evaluation)
+    const cols = g.sections.map(s =>
+      `<div class="eval-col">
+         <div class="sub-section">${s.title}</div>
+         <div class="grid grid--${s.cols}">${s.children.map(renderCard).join('')}</div>
+       </div>`
+    ).join('');
+    cardsHtml = `<div class="eval-row">${cols}</div>`;
+  } else {
+    cardsHtml = `<div class="grid grid--${g.cols}">${g.children.map(renderCard).join('')}</div>`;
+  }
+  const badge = g.badge ? `<span class="group__badge">${g.badge}</span>` : '';
+  el.innerHTML = `<div class="group__header" style="color:${g.color}">${svgIcon(g.icon)}<span>${g.title}</span>${badge}</div>${cardsHtml}`;
+  if (g.pos.h) el.style.minHeight = g.pos.h + 'px';
+  if (g.pos.minH) el.style.minHeight = g.pos.minH + 'px';
+  return el;
+}
+
+const canvas = document.getElementById('canvas');
+[...groups, evalGroup].forEach(g => canvas.appendChild(renderGroup(g)));
+
+/* ---------------- BUBBLES ---------------- */
+function renderBubble(cls, x, y, label, icon){
+  const el = document.createElement('div');
+  el.className = `bubble ${cls}`;
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+  el.setAttribute('data-group', label.toLowerCase().replace(/\s+/g,'-'));
+  el.innerHTML = `${svgIcon(icon)}<span class="bubble__label">${label}</span>`;
+  return el;
+}
+// Place bubbles aligned with inference row center (y=800), bubble height ~40
+canvas.appendChild(renderBubble('bubble--user', 130, 780, 'User Query', 'person'));
+canvas.appendChild(renderBubble('bubble--resp', 1820, 780, 'Response', 'chat'));
+
+/* ---------------- CANVAS HEIGHT ---------------- */
+function setCanvasHeight() {
+  const els = canvas.querySelectorAll('.group, .bubble');
+  let maxBottom = 0;
+  els.forEach(el=>{
+    const r = el.getBoundingClientRect();
+    const cR = canvas.getBoundingClientRect();
+    const b = r.bottom - cR.top;
+    if (b > maxBottom) maxBottom = b;
+  });
+  canvas.style.height = (maxBottom + 80) + 'px';
+  const overlay = document.getElementById('overlay');
+  overlay.setAttribute('width', canvas.offsetWidth);
+  overlay.setAttribute('height', canvas.offsetHeight);
+}
+
+/* ---------------- CONNECTORS ---------------- */
+function bbox(selector) {
+  const el = canvas.querySelector(selector);
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  const c = canvas.getBoundingClientRect();
+  return {
+    left:   r.left - c.left,
+    top:    r.top - c.top,
+    right:  r.right - c.left,
+    bottom: r.bottom - c.top,
+    width:  r.width,
+    height: r.height,
+    cx:     r.left - c.left + r.width/2,
+    cy:     r.top - c.top + r.height/2
+  };
+}
+
+function makePath(d, opts) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const p = document.createElementNS(ns, 'path');
+  p.setAttribute('d', d);
+  p.setAttribute('fill', 'none');
+  p.setAttribute('stroke', opts.stroke || '#374151');
+  p.setAttribute('stroke-width', opts.width || 1.75);
+  if (opts.dash) p.setAttribute('stroke-dasharray', '6,4');
+  p.setAttribute('marker-end', `url(#${opts.marker || 'arrow-dark'})`);
+  return p;
+}
+
+const pendingLabels = [];
+function addLabel(x, y, text, color) {
+  pendingLabels.push({ x, y, text, color: color || '#475569' });
+}
+
+function renderLabels() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const overlay = document.getElementById('overlay');
+  pendingLabels.forEach(({x, y, text, color}) => {
+    const t = document.createElementNS(ns, 'text');
+    t.setAttribute('x', x);
+    t.setAttribute('y', y);
+    t.setAttribute('text-anchor', 'middle');
+    t.setAttribute('dominant-baseline', 'middle');
+    t.setAttribute('class', 'connector-label');
+    if (color) t.style.fill = color;
+    t.textContent = text;
+    overlay.appendChild(t);
+  });
+}
+
+function hLine(a, b, opts, label) {
+  // Anchor at right-center of source, left-center of target, with standoff
+  const x1 = a.right + STANDOFF;
+  const x2 = b.left - STANDOFF;
+  const overlay = document.getElementById('overlay');
+
+  if (Math.abs(a.cy - b.cy) < 2) {
+    const y = a.cy;
+    const d = `M ${x1} ${y} L ${x2} ${y}`;
+    overlay.appendChild(makePath(d, opts));
+    if (label) {
+      // Label sits ABOVE group top (in zone padding) — no overlap with cards
+      const labelY = Math.min(a.top, b.top) - 12;
+      addLabel((x1 + x2) / 2, labelY, label, opts.labelColor);
+    }
+  } else {
+    const xm = (x1 + x2) / 2;
+    const d = `M ${x1} ${a.cy} L ${xm} ${a.cy} L ${xm} ${b.cy} L ${x2} ${b.cy}`;
+    overlay.appendChild(makePath(d, opts));
+    if (label) {
+      const useTop = Math.abs(xm - x1) > Math.abs(x2 - xm);
+      const lx = useTop ? (x1 + xm) / 2 : (xm + x2) / 2;
+      const ly = Math.min(a.top, b.top) - 12;
+      addLabel(lx, ly, label, opts.labelColor);
+    }
+  }
+}
+
+function customPath(points, opts, label, labelIdx) {
+  const d = points.map((p,i)=> (i===0?'M':'L')+' '+p[0]+' '+p[1]).join(' ');
+  const overlay = document.getElementById('overlay');
+  overlay.appendChild(makePath(d, opts));
+  if (label) {
+    const i = labelIdx ?? Math.floor(points.length / 2);
+    const a = points[i-1], b = points[i];
+    const lx = (a[0]+b[0])/2;
+    const ly = (a[1]+b[1])/2;
+    addLabel(lx, ly, label, opts.labelColor);
+  }
+}
+
+function drawConnectors() {
+  const G = id => bbox(`[data-group="${id}"]`);
+  const dark = { stroke:'#6b7280', marker:'arrow-dark' };
+
+  // Indexing row — straight horizontal lines (centers aligned)
+  hLine(G('g1'), G('g2'), dark, '500-2000 PDFs');
+  hLine(G('g2'), G('g3'), dark, 'structured JSON');
+  hLine(G('g3'), G('g4'), dark, 'typed elements');
+  hLine(G('g4'), G('g5'), dark, 'per chunk');
+  hLine(G('g5'), G('g6'), dark, 'embed + store');
+
+  // Inference row — straight horizontal lines (centers aligned)
+  const uq = G('user-query');
+  const resp = G('response');
+  hLine(uq, G('g7'), dark, 'natural language');
+  hLine(G('g7'), G('g8'), dark, 'routed query');
+  hLine(G('g8'), G('g9'), dark, 'top 8 chunks');
+  hLine(G('g9'), G('g10'), dark, 'grounded context');
+  hLine(G('g10'), resp, dark);
+
+  // Storage → Hybrid Retrieval — vertical drop, label on vertical segment near source
+  const g6 = G('g6'), g8 = G('g8');
+  const startX = g6.cx;
+  const startY = g6.bottom + STANDOFF;
+  const endX = g8.cx;
+  const endY = g8.top - STANDOFF;
+  const midY = (startY + endY) / 2;
+  customPath(
+    [[startX, startY], [startX, midY], [endX, midY], [endX, endY]],
+    dark
+  );
+  // Label placed near vertical segment, close to Storage (source)
+  addLabel(startX + 54, startY + 28, 'vector + BM25');
+
+}
+
+/* ---------------- STAGE ZONES + BANNERS ---------------- */
+function positionStageZones() {
+  // Indexing zone bounds = union of g1..g6 group boxes
+  const idxIds = ['g1','g2','g3','g4','g5','g6'];
+  const infIds = ['user-query','g7','g8','g9','g10','response'];
+
+  function unionBBox(ids) {
+    let l=Infinity, t=Infinity, r=-Infinity, b=-Infinity;
+    ids.forEach(id => {
+      const el = canvas.querySelector(`[data-group="${id}"]`);
+      if (!el) return;
+      const cr = canvas.getBoundingClientRect();
+      const er = el.getBoundingClientRect();
+      l = Math.min(l, er.left - cr.left);
+      t = Math.min(t, er.top - cr.top);
+      r = Math.max(r, er.right - cr.left);
+      b = Math.max(b, er.bottom - cr.top);
+    });
+    return {l,t,r,b};
+  }
+
+  const pad = 22;
+  const headerOffset = 52;
+  const idx = unionBBox(idxIds);
+  const inf = unionBBox(infIds);
+
+  const zIdx = document.getElementById('zone-indexing');
+  zIdx.style.left = (idx.l - pad) + 'px';
+  zIdx.style.top  = (idx.t - pad - headerOffset) + 'px';
+  zIdx.style.width = (idx.r - idx.l + pad*2) + 'px';
+  zIdx.style.height = (idx.b - idx.t + pad*2 + headerOffset) + 'px';
+
+  const zInf = document.getElementById('zone-inference');
+  zInf.style.left = (inf.l - pad) + 'px';
+  zInf.style.top  = (inf.t - pad - headerOffset) + 'px';
+  zInf.style.width = (inf.r - inf.l + pad*2) + 'px';
+  zInf.style.height = (inf.b - inf.t + pad*2 + headerOffset) + 'px';
+
+  // Plain typography labels, flush top-left of each zone
+  const lIdx = document.getElementById('label-indexing');
+  lIdx.style.left = (idx.l - pad + 4) + 'px';
+  lIdx.style.top  = (idx.t - pad - headerOffset + 4) + 'px';
+
+  const lInf = document.getElementById('label-inference');
+  lInf.style.left = (inf.l - pad + 4) + 'px';
+  lInf.style.top  = (inf.t - pad - headerOffset + 4) + 'px';
+}
+
+/* ---------------- INIT ---------------- */
+window.addEventListener('load', () => {
+  setCanvasHeight();
+  positionStageZones();
+  drawConnectors();
+  renderLabels();
+  setCanvasHeight();
+});
+</script>
+</body>
+</html>
