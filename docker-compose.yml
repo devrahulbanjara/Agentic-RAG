@@ -1,102 +1,66 @@
 services:
-  rag-api:
-    build: .
-    container_name: rag-api
-    ports:
-      - "8000:8000"
-    depends_on:
-      rag-postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\""]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    env_file:
-      - .env
-    environment:
-      - OLLAMA_HOST=http://rag-ollama:11434
-      - POSTGRES_DATABASE_URL=postgresql+psycopg2://rag_user:rag_password@rag-postgres:5432/rag_db
-    networks:
-      - rag-network
+  # research-assistant-airflow:
+  #   build:
+  #     context: ./airflow
+  #     dockerfile: Dockerfile
+  #   container_name: research-assistant-airflow
+  #   depends_on:
+  #     research-assistant-postgres:
+  #       condition: service_healthy
+  #     research-assistant-qdrant:
+  #       condition: service_started
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     - AIRFLOW_HOME=/opt/airflow
+  #     - PYTHONPATH=/opt/airflow/src
+  #     - POSTGRES_DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@research-assistant-postgres:5432/${POSTGRES_DB}
+  #     - QDRANT_URL=http://research-assistant-qdrant:6333
+  #   volumes:
+  #     - ./airflow/dags:/opt/airflow/dags
+  #     - airflow_logs:/opt/airflow/logs
+  #     - ./airflow/plugins:/opt/airflow/plugins
+  #     - ./src:/opt/airflow/src
+  #   ports:
+  #     - "8080:8080"
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 120s
 
-  rag-airflow:
-    build:
-      context: ./airflow
-      dockerfile: Dockerfile
-    container_name: rag-airflow
-    depends_on:
-      rag-postgres:
-        condition: service_healthy
-    env_file:
-      - .env
-    environment:
-      - AIRFLOW_HOME=/opt/airflow
-      - PYTHONPATH=/opt/airflow/src
-      - POSTGRES_DATABASE_URL=postgresql+psycopg2://rag_user:rag_password@rag-postgres:5432/rag_db
-      - OLLAMA_HOST=http://rag-ollama:11434
-    volumes:
-      - ./airflow/dags:/opt/airflow/dags
-      - airflow_logs:/opt/airflow/logs
-      - ./airflow/plugins:/opt/airflow/plugins
-      - ./src:/opt/airflow/src
-    ports:
-      - "8080:8080"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
-    networks:
-      - rag-network
+  # research-assistant-postgres:
+  #   image: postgres:16-alpine
+  #   container_name: research-assistant-postgres
+  #   environment:
+  #     - POSTGRES_DB=${POSTGRES_DB}
+  #     - POSTGRES_USER=${POSTGRES_USER}
+  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+  #     - PGDATA=/var/lib/postgresql/data/pgdata
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 10
+  #     start_period: 30s
+  #   restart: unless-stopped
 
-  rag-ollama:
-    image: ollama/ollama:0.11.2
-    container_name: rag-ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    networks:
-      - rag-network
-
-  rag-postgres:
-    image: postgres:16-alpine
-    container_name: rag-postgres
-    environment:
-      - POSTGRES_DB=rag_db
-      - POSTGRES_USER=rag_user
-      - POSTGRES_PASSWORD=rag_password
-      - POSTGRES_HOST_AUTH_METHOD=password
-      - PGDATA=/var/lib/postgresql/data/pgdata
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rag_user -d rag_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+  research-assistant-qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: research-assistant-qdrant
     restart: unless-stopped
-    networks:
-      - rag-network
-
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
 
 volumes:
-  postgres_data:
-  ollama_data:
-  airflow_logs:
-
-networks:
-  rag-network:
-    driver: bridge
+  # postgres_data:
+  qdrant_data:
+  # airflow_logs:

@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta
 
 import psycopg2
-import requests
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+
+from src.core.config import settings
 
 
 def hello_world():
@@ -12,30 +13,16 @@ def hello_world():
 
 
 def check_services():
-    """Check if other services are accessible."""
+    """Check Postgres is reachable."""
+    conn = psycopg2.connect(settings.postgres_psycopg2_dsn)
     try:
-        # Check API health
-        response = requests.get("http://rag-api:8000/api/v1/health", timeout=5)
-        print(f"API Health: {response.status_code}")
-
-        # Check database connection
-        conn = psycopg2.connect(
-            host="rag-postgres",
-            port=5432,
-            database="rag_db",
-            user="rag_user",
-            password="rag_password",
-        )
         print("Database: Connected successfully")
+    finally:
         conn.close()
 
-        return "Services are accessible"
-    except Exception as e:
-        print(f"Service check failed: {e}")
-        raise
+    return "Services are accessible"
 
 
-# DAG configuration
 default_args = {
     "owner": "rahul",
     "depends_on_past": False,
@@ -46,7 +33,6 @@ default_args = {
     "retry_delay": timedelta(minutes=5),
 }
 
-# Create the DAG
 dag = DAG(
     "hello_world",
     default_args=default_args,
@@ -56,7 +42,6 @@ dag = DAG(
     tags=["testing"],
 )
 
-# Define tasks
 hello_task = PythonOperator(
     task_id="hello_world",
     python_callable=hello_world,
@@ -69,5 +54,4 @@ service_check_task = PythonOperator(
     dag=dag,
 )
 
-# Set task dependencies
 hello_task >> service_check_task
