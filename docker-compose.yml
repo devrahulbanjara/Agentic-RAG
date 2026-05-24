@@ -51,7 +51,7 @@ services:
   #   restart: unless-stopped
 
   research-assistant-qdrant:
-    image: qdrant/qdrant:v1.12.4
+    image: qdrant/qdrant:latest
     container_name: research-assistant-qdrant
     restart: unless-stopped
     ports:
