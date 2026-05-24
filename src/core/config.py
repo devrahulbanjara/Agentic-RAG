@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     qdrant_url: str = Field(alias="QDRANT_URL")
     qdrant_collection: str = Field(alias="QDRANT_COLLECTION")
 
+    dense_model: str = "BAAI/bge-small-en"
+    sparse_model: str = "qdrant/bm25"
+
     @cached_property
     def postgres_psycopg2_dsn(self) -> str:
         return str(self.postgres_database_url).replace("+psycopg2", "")
