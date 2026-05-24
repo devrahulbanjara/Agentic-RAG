@@ -1,20 +1,18 @@
 # Roadmap
 
-## Step 1 — I will get one paper working, stupidly simple
+## Step 1 — One paper, stupidly simple ✅
 
-I will pick P1 ("Attention Is All You Need").
+Picked P1 ("Attention Is All You Need"). Extracted text with `pymupdf4llm`. Chunked naively every 500 characters. Embedded with `BAAI/bge-small-en` (dense) + `qdrant/bm25` (sparse). Stored vectors in local Qdrant with hybrid search (RRF fusion). Asked a question, got relevant chunks back.
 
-I will extract text with `pdfplumber` (not Docling yet). I will chunk it naively by splitting every 500 characters. I will embed with `sentence-transformers/all-MiniLM-L6-v2`. I will store the vectors in a local Qdrant. I will ask one question and get one answer from an LLM using the retrieved chunk as context.
-
-At the end of this step I will have a working RAG pipeline. It will be bad. It will also be mine, end to end, on my machine. That is the foundation everything else sits on.
+Working RAG pipeline, end to end, on local machine.
 
 ---
 
-## Step 2 — I will make it work on 10 papers
+## Step 2 — Multiple papers ✅
 
-Same pipeline, more data. I will download 10 arXiv PDFs (P1–P4 plus six neighbours). I will ingest all of them through the same code path and confirm retrieval returns the right paper's content for a query.
+Downloaded 11 arXiv PDFs into `data/`. Ingestion loop processes all PDFs in directory, chunks each, stores `arxiv_id` (from filename) in Qdrant payload. Collection: `arxiv_papers`. Pipeline handles different PDF formats without breaking.
 
-This forces me to write the ingestion loop, store basic metadata (`arxiv_id`, `version`, `title`) in the Qdrant payload, and prove the pipeline does not break on PDFs with different formatting.
+Notebook: `notebooks/one_paper.ipynb`.
 
 ---
 
