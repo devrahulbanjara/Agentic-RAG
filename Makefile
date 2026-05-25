@@ -26,6 +26,10 @@ health: ## Check all services health
 	@curl -s http://localhost:8080/api/v2/monitor/health || echo "Airflow not responding"
 	@curl -s http://localhost:11434/api/version | jq . || echo "Ollama not responding"
 
+# Ingestion
+ingest: ## Run ingestion on all PDFs in data/
+	uv run python -m src.ingestion.cli -b data/
+
 # Development
 format: ## Run code formatting
 	uvx ruff format

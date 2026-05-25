@@ -60,6 +60,24 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
 
+  grobid:
+    image: lfoppiano/grobid:0.9.0-crf
+    container_name: grobid_service
+    platform: linux/amd64
+    ports:
+      - "8070:8070"
+    init: true
+    ulimits:
+      core: 0
+    environment:
+      - JAVA_OPTS=-Xms512m -Xmx1536m
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+    restart: unless-stopped
+
+
 volumes:
   # postgres_data:
   qdrant_data:
