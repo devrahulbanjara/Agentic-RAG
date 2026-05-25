@@ -17,13 +17,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     service_name: str = "research-assistant"
 
-    postgres_db: str = Field(alias="POSTGRES_DB")
-    postgres_user: str = Field(alias="POSTGRES_USER")
-    postgres_password: str = Field(alias="POSTGRES_PASSWORD")
     postgres_database_url: PostgresDsn = Field(alias="POSTGRES_DATABASE_URL")
-    postgres_echo_sql: bool = Field(default=False, alias="POSTGRES_ECHO_SQL")
-    postgres_pool_size: int = Field(default=20, alias="POSTGRES_POOL_SIZE")
-    postgres_max_overflow: int = Field(default=0, alias="POSTGRES_MAX_OVERFLOW")
 
     qdrant_url: str = Field(alias="QDRANT_URL")
     qdrant_collection: str = Field(alias="QDRANT_COLLECTION")

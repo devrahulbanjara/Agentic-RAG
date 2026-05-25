@@ -32,7 +32,6 @@ class ParsedDocument(BaseModel):
     arxiv_id: str
     title: str
     sections: list[Section]
-    preamble: list[DocumentElement]
     references: list[Reference]
 
 

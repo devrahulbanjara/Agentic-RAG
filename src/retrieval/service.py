@@ -47,7 +47,6 @@ class RetrievalService:
                 text=point.payload["text"],
                 score=point.score,
                 arxiv_id=point.payload["arxiv_id"],
-                chunk_idx=point.payload["chunk_idx"],
             )
             for point in results.points
         ]

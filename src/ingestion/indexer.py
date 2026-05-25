@@ -1,3 +1,5 @@
+from uuid import NAMESPACE_URL, uuid5
+
 from fastembed import SparseTextEmbedding
 from loguru import logger
 from qdrant_client import QdrantClient, models
@@ -47,11 +49,12 @@ class QdrantIndexer:
         sparse_embeddings = list(self._sparse_encoder.embed(texts))
 
         points = []
-        for idx, (chunk, dense_vec, sparse_vec) in enumerate(
-            zip(chunks, dense_embeddings, sparse_embeddings)
+        for chunk, dense_vec, sparse_vec in zip(
+            chunks, dense_embeddings, sparse_embeddings
         ):
+            point_id = str(uuid5(NAMESPACE_URL, f"{chunk.arxiv_id}:{chunk.text[:200]}"))
             point = PointStruct(
-                id=idx + 1,
+                id=point_id,
                 payload={
                     "text": chunk.text,
                     "arxiv_id": chunk.arxiv_id,

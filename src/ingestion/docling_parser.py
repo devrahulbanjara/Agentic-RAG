@@ -40,14 +40,13 @@ class DoclingParser:
         logger.info("Parsing {} with Docling", arxiv_id)
 
         result = self._converter.convert(str(pdf_path))
-        sections, preamble = build_tree(result.document)
+        sections, _ = build_tree(result.document)
         self._save_figures(result.document, arxiv_id)
 
         return ParsedDocument(
             arxiv_id=arxiv_id,
             title=result.document.name,
             sections=sections,
-            preamble=preamble,
             references=[],
         )
 

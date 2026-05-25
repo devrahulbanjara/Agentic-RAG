@@ -13,7 +13,6 @@ from loguru import logger
 
 from src.ingestion.config import IngestionSettings
 from src.ingestion.docling_parser import DoclingParser
-from src.ingestion.grobid_client import GrobidClient
 from src.ingestion.indexer import QdrantIndexer
 from src.ingestion.service import IngestionService
 
@@ -54,34 +53,32 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     settings = IngestionSettings()
-
-    # Build dependencies
     doc_parser = DoclingParser(settings)
-    grobid: GrobidClient | None = None
-    if settings.grobid_enabled:
-        grobid = GrobidClient(settings.grobid_url, settings.grobid_timeout)
+    service = IngestionService(parser=doc_parser, settings=settings)
 
-    service = IngestionService(parser=doc_parser, grobid=grobid, settings=settings)
-    results = service.process_batch(pdf_paths)
+    all_chunks = []
+    total_refs = 0
+    processed = 0
+    for i, path in enumerate(pdf_paths, 1):
+        logger.info("[{}/{}] Processing {}", i, len(pdf_paths), path.name)
+        try:
+            doc, chunks = service.process_pdf(path)
+            all_chunks.extend(chunks)
+            total_refs += len(doc.references)
+            processed += 1
+        except Exception:
+            logger.exception("Failed to process {}, skipping", path.name)
 
-    # Index to Qdrant
-    all_chunks = [c for _, chunks in results for c in chunks]
     if all_chunks:
         indexer = QdrantIndexer(settings)
         indexer.index(all_chunks)
 
-    # Summary
-    total_chunks = sum(len(chunks) for _, chunks in results)
-    total_refs = sum(len(doc.references) for doc, _ in results)
     logger.info(
         "Done: {} papers, {} chunks, {} references",
-        len(results),
-        total_chunks,
+        processed,
+        len(all_chunks),
         total_refs,
     )
-
-    if grobid:
-        grobid.close()
 
 
 if __name__ == "__main__":

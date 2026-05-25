@@ -56,7 +56,7 @@ def _make_element(item, doc) -> DocumentElement | None:
 def build_tree(doc) -> tuple[list[Section], list[DocumentElement]]:
     """Build structured section tree from a Docling document.
 
-    Returns (sections, preamble) where preamble holds elements that appear
+    Returns (sections, abstract) where abstract holds elements that appear
     before the first section header.
     """
     for item, _ in doc.iterate_items():
@@ -64,7 +64,7 @@ def build_tree(doc) -> tuple[list[Section], list[DocumentElement]]:
             item.level = infer_heading_level(item.text)
 
     sections: list[Section] = []
-    preamble: list[DocumentElement] = []
+    abstract: list[DocumentElement] = []
     section_stack: list[tuple[int, Section]] = []
 
     for item, _ in doc.iterate_items():
@@ -88,7 +88,7 @@ def build_tree(doc) -> tuple[list[Section], list[DocumentElement]]:
         if element is None:
             continue
 
-        target = section_stack[-1][1].content if section_stack else preamble
+        target = section_stack[-1][1].content if section_stack else abstract
         target.append(element)
 
-    return sections, preamble
+    return sections, abstract

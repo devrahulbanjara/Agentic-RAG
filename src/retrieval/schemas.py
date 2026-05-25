@@ -14,7 +14,6 @@ class RetrievedChunk(BaseModel):
     text: str
     score: float
     arxiv_id: str
-    chunk_idx: int
 
 
 class RetrievalResponse(BaseModel):
