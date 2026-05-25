@@ -28,19 +28,13 @@ Notebooks: `notebooks/docling_json_tree.ipynb` (Docling), `notebooks/pymupdf_par
 
 ---
 
-## Step 4 — I will add GROBID and a re-structuring pass
+## Step 4 — GROBID integration, ingestion module, and restructuring pass ✅
 
-Docling parses pages well; it parses references badly. I will run GROBID in parallel on every PDF, take its `<biblStruct>` reference entries, and merge them into Docling's tree. References now have parsed `authors`, `title`, `venue`, `year`, `doi`.
+Added GROBID as a Docker service (`lfoppiano/grobid:0.9.0-crf`) for reference extraction. Built a full `src/ingestion/` module: GROBID client parses `<biblStruct>` entries into structured `authors`, `title`, `venue`, `year`, `doi`. Docling parser extracts document tree (sections, paragraphs, tables, figures, equations). Structure-aware chunker produces paragraph-level chunks prefixed with section path, with hyphenation stripping and noise filtering. Qdrant indexer handles dense (BGE-small) + sparse (BM25) embedding and upsert. Orchestration service ties parse → chunk → index end-to-end. CLI supports single-file and batch ingestion (`make ingest`).
 
-Then I will write a thin re-structuring layer that fixes the things Docling gets wrong:
+Restructuring pass applied: hyphenation artifacts stripped, stray figure captions paired, malformed tables dropped. Citation linking and internal cross-reference mapping deferred to Step 5 (requires Postgres for proper relational storage).
 
-- Strip hyphenation artifacts from column-break-stitched paragraphs.
-- Pair stray figure captions back to their parent figure.
-- Drop or flag tables that came back malformed.
-- Link in-text citation markers (`[14]`, `(Vaswani et al., 2017)`) to the matching reference row.
-- For papers with internal cross-references ("see Table 14"), build an internal link map element → element.
-
-This is the boring plumbing that makes every later stage easier.
+Notebooks: `notebooks/grobid.ipynb` (GROBID exploration), `notebooks/pymupdf_parsing.ipynb` (updated with GROBID reference extraction demo).
 
 ---
 
