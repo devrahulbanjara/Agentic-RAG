@@ -16,13 +16,15 @@ Notebook: `notebooks/one_paper.ipynb`.
 
 ---
 
-## Step 3 — I will replace naive parsing with Docling
+## Step 3 — Replace naive parsing with Docling ✅
 
-I will swap `pdfplumber` for Docling. Now I get a structured document tree — sections with `level`, paragraphs in correct reading order on two-column layouts, tables as `rows` not text blobs, figures saved as PNGs to disk, equations as LaTeX.
+Swapped `pymupdf4llm` for Docling. Structured document tree with sections, paragraphs, tables, figures, equations. Two-column layouts parsed in correct reading order.
 
-I will update chunking to be structure-aware: chunk by paragraph, prefix every chunk with the section path (`[Paper: 1706.03762 v5 | Section: 3 Model Architecture > 3.2 Attention]`). I will not touch tables or figures yet.
+Structure-aware chunking: one chunk per paragraph, prefixed with section path (`[Paper: 1810.04805 | Section: 3 BERT > 3.1 Pre-training BERT]`). Noise filtered. Tables/figures skipped for now.
 
-I will re-ingest the 10 papers and compare retrieval quality side by side. The improvement should be obvious.
+Ingested BERT (`1810.04805`) and LLaMA (`2302.13971`) into `arxiv_papers_docling` collection. Compared with naive 500-char pymupdf chunks. Docling returns complete paragraphs with section context; pymupdf returns mid-sentence fragments at arbitrary boundaries.
+
+Notebooks: `notebooks/docling_json_tree.ipynb` (Docling), `notebooks/pymupdf_parsing.ipynb` (pymupdf baseline).
 
 ---
 
