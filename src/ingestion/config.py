@@ -16,6 +16,7 @@ class IngestionSettings(BaseSettings):
 
     # Chunking
     min_chunk_chars: int = 20
+    merge_max_chars: int = 800
     skip_sections: list[str] = [
         "Table of Contents",
         "List of Figures",

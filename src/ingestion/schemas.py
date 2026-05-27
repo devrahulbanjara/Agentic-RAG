@@ -38,5 +38,5 @@ class ParsedDocument(BaseModel):
 class Chunk(BaseModel):
     text: str
     arxiv_id: str
-    chunk_type: Literal["paragraph"]
+    chunk_type: Literal["paragraph", "table", "figure", "equation"]
     section_path: list[str]
