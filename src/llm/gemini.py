@@ -85,8 +85,8 @@ class GeminiProvider(LLMProvider):
 
     def describe_figure(self, image_path: Path, caption: str | None = None) -> str:
         prompt = self._prompts.render("describe_figure", caption=caption)
-        image = Image.open(image_path)
-        result: Description = self._generate([prompt, image], Description)
+        with Image.open(image_path) as image:
+            result: Description = self._generate([prompt, image], Description)
         return result.description
 
     def describe_equation(self, latex: str, context: str | None = None) -> str:
