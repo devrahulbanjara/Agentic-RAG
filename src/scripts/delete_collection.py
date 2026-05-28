@@ -6,10 +6,11 @@ Usage:
 """
 
 import argparse
+import os
 
 from qdrant_client import QdrantClient
 
-QDRANT_URL = "http://localhost:6333"
+QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 DEFAULT_COLLECTION = "arxiv_papers"
 
 

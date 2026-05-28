@@ -88,33 +88,23 @@ def _parse_single_ref(bibl: ET.Element) -> Reference:
     )
 
 
-class GrobidClient:
-    """HTTP client for GROBID reference extraction."""
+def extract_references(base_url: str, timeout: int, pdf_path: Path) -> list[Reference]:
+    """Send PDF to GROBID, parse TEI XML, return references."""
+    url = f"{base_url.rstrip('/')}/api/processFulltextDocument"
+    try:
+        with open(pdf_path, "rb") as f:
+            resp = httpx.post(
+                url,
+                files={"input": (pdf_path.name, f, "application/pdf")},
+                data={"generateIDs": "1", "consolidateHeader": "1"},
+                timeout=timeout,
+            )
 
-    def __init__(self, base_url: str, timeout: int) -> None:
-        self._base_url = base_url.rstrip("/")
-        self._client = httpx.Client(timeout=timeout)
-
-    def extract_references(self, pdf_path: Path) -> list[Reference]:
-        """Send PDF to GROBID, parse TEI XML, return references."""
-        try:
-            with open(pdf_path, "rb") as f:
-                resp = self._client.post(
-                    f"{self._base_url}/api/processFulltextDocument",
-                    files={"input": (pdf_path.name, f, "application/pdf")},
-                    data={"generateIDs": "1", "consolidateHeader": "1"},
-                )
-
-            if resp.status_code != 200:
-                logger.warning(
-                    "GROBID returned {} for {}", resp.status_code, pdf_path.name
-                )
-                return []
-
-            return parse_tei_references(resp.text)
-        except httpx.HTTPError:
-            logger.exception("GROBID request failed for {}", pdf_path.name)
+        if resp.status_code != 200:
+            logger.warning("GROBID returned {} for {}", resp.status_code, pdf_path.name)
             return []
 
-    def close(self) -> None:
-        self._client.close()
+        return parse_tei_references(resp.text)
+    except httpx.HTTPError:
+        logger.exception("GROBID request failed for {}", pdf_path.name)
+        return []

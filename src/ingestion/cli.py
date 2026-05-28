@@ -11,11 +11,28 @@ from pathlib import Path
 
 from loguru import logger
 
-from src.ingestion.config import IngestionSettings
+from src.core.config import settings
 from src.ingestion.docling_parser import DoclingParser
-from src.ingestion.grobid_client import GrobidClient
 from src.ingestion.indexer import QdrantIndexer
 from src.ingestion.service import IngestionService
+from src.llm import get_llm_provider
+
+_LOG_FORMAT = (
+    "<green>{time:HH:mm:ss}</green> | "
+    "<level>{level: <7}</level> | "
+    "<cyan>{name}</cyan> | "
+    "{message}"
+)
+
+
+def _configure_logging(verbose: bool) -> None:
+    """INFO by default (step-level progress). --verbose drops to DEBUG."""
+    logger.remove()
+    logger.add(
+        sys.stderr,
+        level="DEBUG" if verbose else "INFO",
+        format=_LOG_FORMAT,
+    )
 
 
 def _collect_pdfs(args: argparse.Namespace) -> list[Path]:
@@ -43,7 +60,19 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Parse and chunk arXiv PDFs")
     parser.add_argument("-i", "--input", nargs="+", type=Path, help="PDF file(s)")
     parser.add_argument("-b", "--batch-dir", type=Path, help="Directory of PDFs")
+    parser.add_argument(
+        "--no-enrich",
+        action="store_true",
+        help="Skip LLM enrichment (table/figure/equation descriptions)",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable DEBUG-level logs (per-chunk, per-step detail)",
+    )
     args = parser.parse_args(argv)
+    _configure_logging(args.verbose)
 
     if not args.input and not args.batch_dir:
         parser.error("Provide -i <files> or -b <directory>")
@@ -53,35 +82,50 @@ def main(argv: list[str] | None = None) -> None:
         logger.error("No valid PDF files to process")
         sys.exit(1)
 
-    settings = IngestionSettings()
+    doc_parser = DoclingParser(settings.docling)
+    llm = None if args.no_enrich else get_llm_provider()
+    service = IngestionService(
+        parser=doc_parser,
+        grobid_cfg=settings.grobid,
+        chunking_cfg=settings.chunking,
+        llm=llm,
+    )
+    indexer = QdrantIndexer(settings.qdrant)
 
-    # Build dependencies
-    doc_parser = DoclingParser(settings)
-    grobid: GrobidClient | None = None
-    if settings.grobid_enabled:
-        grobid = GrobidClient(settings.grobid_url, settings.grobid_timeout)
+    total_chunks = 0
+    total_refs = 0
+    processed = 0
+    for i, path in enumerate(pdf_paths, 1):
+        logger.info("[{}/{}] === START {} ===", i, len(pdf_paths), path.name)
+        try:
+            doc, chunks = service.process_pdf(path)
+            if chunks:
+                logger.info(
+                    "[{}/{}] Indexing {} chunks", i, len(pdf_paths), len(chunks)
+                )
+                indexer.index(chunks)
+            total_chunks += len(chunks)
+            total_refs += len(doc.references)
+            processed += 1
+            logger.info(
+                "[{}/{}] === DONE {} ({} chunks, {} refs) ===",
+                i,
+                len(pdf_paths),
+                path.name,
+                len(chunks),
+                len(doc.references),
+            )
+        except Exception:
+            logger.exception(
+                "[{}/{}] FAILED {}, skipping", i, len(pdf_paths), path.name
+            )
 
-    service = IngestionService(parser=doc_parser, grobid=grobid, settings=settings)
-    results = service.process_batch(pdf_paths)
-
-    # Index to Qdrant
-    all_chunks = [c for _, chunks in results for c in chunks]
-    if all_chunks:
-        indexer = QdrantIndexer(settings)
-        indexer.index(all_chunks)
-
-    # Summary
-    total_chunks = sum(len(chunks) for _, chunks in results)
-    total_refs = sum(len(doc.references) for doc, _ in results)
     logger.info(
         "Done: {} papers, {} chunks, {} references",
-        len(results),
+        processed,
         total_chunks,
         total_refs,
     )
-
-    if grobid:
-        grobid.close()
 
 
 if __name__ == "__main__":

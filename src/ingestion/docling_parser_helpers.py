@@ -1,4 +1,6 @@
 import re
+from pathlib import Path
+from typing import Callable
 
 from docling_core.types.doc import (
     PictureItem,
@@ -24,8 +26,17 @@ def infer_heading_level(text: str) -> int:
     return 1
 
 
-def _make_element(item, doc) -> DocumentElement | None:
-    """Convert a single Docling item into a DocumentElement."""
+def _make_element(
+    item,
+    doc,
+    save_figure: Callable[[PictureItem], str | None] | None,
+) -> DocumentElement | None:
+    """Convert a single Docling item into a DocumentElement.
+
+    If `save_figure` is provided and the item is a PictureItem with an
+    image, it is invoked to persist the image to disk; the returned path
+    is attached to the element.
+    """
     if isinstance(item, TableItem):
         df = item.export_to_dataframe(doc=doc)
         rows = [[str(c) for c in df.columns]] + [
@@ -38,10 +49,12 @@ def _make_element(item, doc) -> DocumentElement | None:
         )
 
     if isinstance(item, PictureItem):
+        image_path = save_figure(item) if save_figure else None
         return DocumentElement(
             element_type="figure",
             caption=item.caption_text(doc=doc) or None,
             has_image=item.image is not None,
+            image_path=image_path,
         )
 
     if isinstance(item, TextItem):
@@ -53,18 +66,47 @@ def _make_element(item, doc) -> DocumentElement | None:
     return None
 
 
-def build_tree(doc) -> tuple[list[Section], list[DocumentElement]]:
+def _make_figure_saver(
+    figure_dir: Path, arxiv_id: str
+) -> Callable[[PictureItem], str | None]:
+    """Return a callable that saves PictureItem images under figure_dir/arxiv_id."""
+    counter = {"idx": 0}
+
+    def save(item: PictureItem) -> str | None:
+        if item.image is None:
+            return None
+        out_dir = figure_dir / arxiv_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"fig_{counter['idx']}.png"
+        item.image.pil_image.save(str(out_path))
+        counter["idx"] += 1
+        return str(out_path)
+
+    return save
+
+
+def build_tree(
+    doc,
+    figure_dir: Path | None = None,
+    arxiv_id: str | None = None,
+) -> tuple[list[Section], list[DocumentElement]]:
     """Build structured section tree from a Docling document.
 
-    Returns (sections, preamble) where preamble holds elements that appear
-    before the first section header.
+    Returns (sections, abstract) where abstract holds elements that appear
+    before the first section header. When `figure_dir` and `arxiv_id` are
+    set, figure images are saved to disk and their paths attached to the
+    corresponding figure elements.
     """
     for item, _ in doc.iterate_items():
         if isinstance(item, SectionHeaderItem):
             item.level = infer_heading_level(item.text)
 
+    save_figure = (
+        _make_figure_saver(figure_dir, arxiv_id) if figure_dir and arxiv_id else None
+    )
+
     sections: list[Section] = []
-    preamble: list[DocumentElement] = []
+    abstract: list[DocumentElement] = []
     section_stack: list[tuple[int, Section]] = []
 
     for item, _ in doc.iterate_items():
@@ -84,11 +126,11 @@ def build_tree(doc) -> tuple[list[Section], list[DocumentElement]]:
             section_stack.append((item.level, section))
             continue
 
-        element = _make_element(item, doc)
+        element = _make_element(item, doc, save_figure)
         if element is None:
             continue
 
-        target = section_stack[-1][1].content if section_stack else preamble
+        target = section_stack[-1][1].content if section_stack else abstract
         target.append(element)
 
-    return sections, preamble
+    return sections, abstract

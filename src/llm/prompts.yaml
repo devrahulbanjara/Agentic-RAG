@@ -1,0 +1,72 @@
+# Prompt library for LLM enrichment.
+#
+# Single source of truth for every prompt the LLM provider sees.
+#
+# Schema:
+#   system: <str>                    # Shared system instruction.
+#   prompts:
+#     <name>:
+#       description: <str>           # Human-readable purpose.
+#       template: <jinja2 string>    # Variables rendered with Jinja2 (StrictUndefined).
+#
+# Pass optional variables as None — `{% if var %}` blocks then skip cleanly.
+
+system: |
+  You are a scientific document assistant. Produce concise, factual,
+  search-friendly descriptions. No filler, no speculation.
+
+prompts:
+  describe_table:
+    description: Two-to-three sentence natural-language description of a markdown table.
+    template: |
+      Describe this table in 2-3 sentences. State what it compares,
+      and call out one or two key numbers. Use plain English so the
+      description is retrievable by semantic search.
+      {% if caption %}
+
+      Caption: {{ caption }}
+      {% endif %}
+
+      Table (markdown):
+      {{ markdown }}
+
+  describe_figure:
+    description: Two-to-three sentence description of a scientific figure (image + caption).
+    template: |
+      Describe this scientific figure in 2-3 sentences. State what is
+      shown and what insight it conveys. Plain English, retrievable.
+      {% if caption %}
+
+      Caption: {{ caption }}
+      {% endif %}
+
+  describe_equation:
+    description: Two-to-three sentence description of a LaTeX equation.
+    template: |
+      Describe this equation in 2-3 sentences. State what it computes
+      and the role of each main symbol. Plain English.
+      {% if context %}
+
+      Context: {{ context }}
+      {% endif %}
+
+      LaTeX:
+      {{ latex }}
+
+  extract_keywords:
+    description: Up to 15 retrieval keywords from a chunk.
+    template: |
+      Extract up to 15 keywords for retrieval: model names, method
+      names, dataset names, metric names, important numbers.
+
+      Chunk:
+      {{ text }}
+
+  generate_questions:
+    description: Three specific questions the chunk answers (hypothetical questions for retrieval).
+    template: |
+      Write exactly 3 specific questions that this chunk answers.
+      Each question should be answerable from the chunk alone.
+
+      Chunk:
+      {{ text }}

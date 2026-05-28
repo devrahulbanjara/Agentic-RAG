@@ -19,6 +19,7 @@ class DocumentElement(BaseModel):
     caption: str | None = None
     rows: list[list[str]] | None = None
     has_image: bool = False
+    image_path: str | None = None
 
 
 class Section(BaseModel):
@@ -32,12 +33,13 @@ class ParsedDocument(BaseModel):
     arxiv_id: str
     title: str
     sections: list[Section]
-    preamble: list[DocumentElement]
     references: list[Reference]
 
 
 class Chunk(BaseModel):
     text: str
     arxiv_id: str
-    chunk_type: Literal["paragraph"]
+    chunk_type: Literal["paragraph", "table", "figure", "equation"]
     section_path: list[str]
+    image_path: str | None = None
+    description: str | None = None
