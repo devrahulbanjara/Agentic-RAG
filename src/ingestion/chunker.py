@@ -1,20 +1,20 @@
+from src.core.config import ChunkingSettings
 from src.ingestion.chunker_helpers import (
     is_noise,
     merge_short_paragraphs,
     table_to_markdown,
 )
-from src.ingestion.config import IngestionSettings
 from src.ingestion.schemas import Chunk, ParsedDocument, Section
 
 
-def chunk_document(doc: ParsedDocument, settings: IngestionSettings) -> list[Chunk]:
+def chunk_document(doc: ParsedDocument, cfg: ChunkingSettings) -> list[Chunk]:
     """Turn a parsed document into a list of chunks for embedding and storage.
 
     Walks the document's section tree. For each section, processes every
     element in reading order:
 
     - paragraph: collected into a list. Consecutive short paragraphs get
-      merged if their combined length <= settings.merge_max_chars. When a
+      merged if their combined length <= cfg.merge_max_chars. When a
       non-paragraph element appears or the section ends, all collected
       paragraphs are merged and saved as chunks before moving on.
     - table: rendered as markdown with caption. Skipped if fewer than 2 rows.
@@ -90,7 +90,7 @@ def chunk_document(doc: ParsedDocument, settings: IngestionSettings) -> list[Chu
             section_path: List of section headings for this section.
             section_str: The section path joined with " > " for the prefix.
         """
-        for merged_text in merge_short_paragraphs(para_texts, settings.merge_max_chars):
+        for merged_text in merge_short_paragraphs(para_texts, cfg.merge_max_chars):
             chunks.append(
                 _make_paragraph_chunk(merged_text, arxiv_id, section_path, section_str)
             )
@@ -98,7 +98,7 @@ def chunk_document(doc: ParsedDocument, settings: IngestionSettings) -> list[Chu
     def walk(sections: list[Section], path: list[str]) -> None:
         for section in sections:
             heading = section.heading
-            if heading in settings.skip_sections:
+            if heading in cfg.skip_sections:
                 continue
             current_path = [*path, heading]
             section_str = " > ".join(current_path)
@@ -107,7 +107,7 @@ def chunk_document(doc: ParsedDocument, settings: IngestionSettings) -> list[Chu
             for item in section.content:
                 if item.element_type == "paragraph":
                     text = (item.text or "").strip()
-                    if is_noise(text, settings.min_chunk_chars):
+                    if is_noise(text, cfg.min_chars):
                         continue
                     para_texts.append(text)
 
@@ -145,7 +145,7 @@ def chunk_document(doc: ParsedDocument, settings: IngestionSettings) -> list[Chu
                     para_texts = []
 
                     caption = item.caption or ""
-                    if not caption or len(caption.strip()) < settings.min_chunk_chars:
+                    if not caption or len(caption.strip()) < cfg.min_chars:
                         continue
                     label = f"Figure: {caption}" if caption else "Figure"
                     prefixed = (
@@ -158,6 +158,7 @@ def chunk_document(doc: ParsedDocument, settings: IngestionSettings) -> list[Chu
                             arxiv_id=doc.arxiv_id,
                             chunk_type="figure",
                             section_path=current_path,
+                            image_path=item.image_path,
                         )
                     )
 

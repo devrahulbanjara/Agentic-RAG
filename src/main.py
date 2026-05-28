@@ -12,12 +12,12 @@ from src.retrieval.service import RetrievalService
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    qdrant = QdrantClient(url=settings.qdrant_url)
+    qdrant = QdrantClient(url=settings.qdrant.url)
     app.state.retrieval_service = RetrievalService(
         qdrant=qdrant,
-        dense_encoder=TextEmbedding(model_name=settings.dense_model),
-        sparse_encoder=SparseTextEmbedding(model_name=settings.sparse_model),
-        collection_name=settings.qdrant_collection,
+        dense_encoder=TextEmbedding(model_name=settings.qdrant.dense_model),
+        sparse_encoder=SparseTextEmbedding(model_name=settings.qdrant.sparse_model),
+        collection_name=settings.qdrant.collection,
     )
     yield
     qdrant.close()
