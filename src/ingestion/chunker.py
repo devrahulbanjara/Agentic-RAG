@@ -26,8 +26,8 @@ def chunk_document(doc: ParsedDocument, cfg: ChunkingSettings) -> list[Chunk]:
 
     Args:
         doc: The parsed document (from Docling + GROBID).
-        settings: Ingestion config with min_chunk_chars, merge_max_chars,
-                  skip_sections, etc.
+        cfg: Chunking config with min_chars, merge_max_chars,
+             skip_sections, etc.
 
     Returns:
         List of Chunk objects, each with text, arxiv_id, chunk_type, and
