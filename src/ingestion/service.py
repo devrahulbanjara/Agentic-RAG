@@ -5,7 +5,7 @@ from loguru import logger
 from src.core.config import ChunkingSettings, GrobidSettings
 from src.ingestion.chunker import chunk_document
 from src.ingestion.docling_parser import DoclingParser
-from src.ingestion.enricher import enrich_chunks
+from src.ingestion.enricher import enrich_chunks, enrich_metadata
 from src.ingestion.grobid_client import extract_references
 from src.ingestion.schemas import Chunk, ParsedDocument
 from src.llm.base import LLMProvider
@@ -58,10 +58,18 @@ class IngestionService:
 
         if self._llm is not None:
             non_para = len(chunks) - type_counts["paragraph"]
-            logger.info("Step 4/4: Enriching {} non-paragraph chunks via LLM", non_para)
+            logger.info(
+                "Step 4/5: Enriching {} non-paragraph chunks with descriptions",
+                non_para,
+            )
             chunks = enrich_chunks(chunks, self._llm)
+            logger.info(
+                "Step 5/5: Generating questions + keywords for all {} chunks",
+                len(chunks),
+            )
+            chunks = enrich_metadata(chunks, self._llm)
         else:
-            logger.info("Step 4/4: Enrichment skipped (--no-enrich)")
+            logger.info("Step 4/5: Enrichment skipped (--no-enrich)")
 
         return doc, chunks
 

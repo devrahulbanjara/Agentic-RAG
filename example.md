@@ -494,7 +494,7 @@ A corpus of 500 papers averaging ~150 chunks each = ~75k chunks. That's the orde
 
 # Stage 5 — Metadata Enrichment (`g5`)
 
-For every chunk (all five types), run three LLM calls. Cache aggressively — these are the most expensive calls in the whole indexing pipeline.
+For every chunk (all five types), run three LLM calls.
 
 ## 5a. Hypothetical questions
 
@@ -556,16 +556,6 @@ At 75k chunks × 3 LLM calls × ~500 input + 100 output tokens = ~135M tokens th
 - Hosted: ~$30–80 depending on model.
 
 Either way it's a one-time cost per corpus. Re-runs only happen on new papers.
-
-## Caching
-
-Key on the **content hash**, not the chunk_id:
-
-```python
-cache_key = sha256(chunk_text + prompt_version).hexdigest()
-```
-
-If you tweak the prompt, bump `prompt_version`. If a chunk's text didn't change (e.g. you re-ran ingestion), the cache hits.
 
 ## Worked example — one chunk from P1
 
