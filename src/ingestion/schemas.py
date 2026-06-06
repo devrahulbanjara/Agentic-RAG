@@ -43,3 +43,5 @@ class Chunk(BaseModel):
     section_path: list[str]
     image_path: str | None = None
     description: str | None = None
+    hypothetical_questions: list[str] = []
+    keywords: list[str] = []

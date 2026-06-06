@@ -101,7 +101,7 @@ All chunk metadata goes into the Qdrant payload: `chunk_type`, `section_path`, `
 
 ---
 
-### Step 6 — Describe tables, figures, and algorithms with LLMs
+### Step 6 — Describe tables, figures, and algorithms with LLMs ✅
 
 **What we have now:** Table, figure, and algorithm chunks exist, but they're raw content (markdown tables, figure captions, pseudocode). Raw markdown doesn't embed well — a user asking "What BLEU did the Transformer get?" won't match a markdown table row that says `| Transformer (big) | 28.4 |`. We need natural language descriptions.
 
@@ -121,28 +121,40 @@ Store descriptions in the Qdrant payload alongside the raw content.
 
 ---
 
-### Step 7 — Metadata enrichment (hypothetical questions, keywords, summaries)
+### Step 7 — Metadata enrichment (hypothetical questions, keywords, summaries) ✅
 
 **What we have now:** Good chunks with descriptions, but retrieval still relies on how well the chunk text happens to match the user's query words. If the user asks "How long did the Transformer take to train?" and the chunk says "Training took 3.5 days on 8 P100 GPUs", the match might be weak because the wording is different.
 
-**What we do:** For every chunk (all six types), run three LLM calls to generate retrieval-boosting metadata:
+**What we do:** For every chunk, run LLM calls to generate retrieval-boosting metadata:
 
 1. **3 hypothetical questions.** Ask the LLM: "What specific questions does this chunk answer?" For the training time chunk, it might generate:
    - "How long did the big Transformer take to train, and on what hardware?"
    - "What GPUs were used to train the Transformer?"
    - "What was the training time for the Transformer (big) model?"
 
-   Now when a user asks "How long did training take?", the query is almost identical to hypothetical question 1. We'll embed these questions separately and search over them (in step 8). This is the single biggest retrieval quality trick in the whole pipeline.
+   Now when a user asks "How long did training take?", the query is almost identical to hypothetical question 1. This is the single biggest retrieval quality trick in the whole pipeline. How they get used is explained below.
 
-2. **Up to 15 keywords.** Ask the LLM to extract: model names ("Transformer"), method names ("scaled dot-product attention"), dataset names ("WMT14"), metric names ("BLEU"), and important numbers ("28.4", "3.5 days"). These keywords are what we'll use for BM25 search — exact term matching.
+2. **Up to 15 keywords.** Ask the LLM to extract: model names ("Transformer"), method names ("scaled dot-product attention"), dataset names ("WMT14"), metric names ("BLEU"), and important numbers ("28.4", "3.5 days"). How they get used is explained below.
 
-3. **1-2 sentence summary.** A short, specific summary: *"The Transformer (big) achieves 28.4 BLEU on WMT14 EN-DE, beating the prior best by over 2 BLEU after 3.5 days of training on 8 P100 GPUs."*
+3. **1-2 sentence summary.** Only for paragraph chunks. A short display string: *"The Transformer (big) achieves 28.4 BLEU on WMT14 EN-DE, beating the prior best by over 2 BLEU after 3.5 days of training on 8 P100 GPUs."* Table/figure/equation chunks skip this — their LLM-generated description from step 6 already serves this role.
 
-Cache results by `sha256(chunk_text + prompt_version)`. If we re-run ingestion and a chunk's text didn't change, we skip the LLM call. This matters because at scale (75k chunks x 3 calls) this stage is the most expensive part of the whole pipeline.
+After this step, store all fields in the Qdrant payload: `hypothetical_questions` (array of 3 strings), `keywords` (array of strings), `summary` (string). **They are not encoded yet. They just sit in the payload.**
 
-Store all three in Qdrant payload fields: `hypothetical_questions` (array of 3 strings), `keywords` (array of strings), `summary` (string).
+**How keywords and questions actually get used (Step 8):**
 
-**What we have after:** Every chunk has hypothetical questions, keywords, and a summary sitting in Qdrant. We haven't used them for retrieval yet — that's what step 8 (new embeddings) and step 9 (hybrid retrieval) are for.
+Step 8 rebuilds the Qdrant collection from scratch with a new schema. Qdrant collections have a fixed schema — you cannot add new vector slots to an existing collection, so a full rebuild is required. The new collection has **three named vectors per chunk** instead of one dense + one sparse:
+
+| Vector name | What gets encoded | Purpose |
+|---|---|---|
+| `content` (1024-d dense) | description (non-paragraph) or raw text (paragraph) | semantic similarity to query |
+| `question` (1024-d dense) | questions[0] + " " + questions[1] + " " + questions[2] | matches queries that are close to a pre-generated question |
+| `keywords_bm25` (sparse) | keywords joined with spaces: `"BLEU WMT14 Transformer 28.4"` | exact term matching |
+
+The old `dense_vector` becomes `content`. The old `bm25_sparse_vector` (which encoded the full messy chunk text) is gone — replaced by `keywords_bm25` which encodes only the clean curated keyword list. The `question` vector is brand new.
+
+`content` and `question` are two completely separate dense vectors stored under different names in Qdrant. They are not merged or added element-wise. Qdrant searches them independently and each returns its own ranked list.
+
+**What we have after:** Every chunk has hypothetical questions, keywords, and (for paragraphs) a summary in the payload, and the collection is rebuilt with three named vectors per chunk ready for three-lane hybrid retrieval in step 9.
 
 ---
 

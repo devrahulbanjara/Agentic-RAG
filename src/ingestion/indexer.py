@@ -42,12 +42,17 @@ class QdrantIndexer:
         if not chunks:
             return 0
 
-        texts = [self._embed_text(c) for c in chunks]
+        dense_texts = [self._embed_text(c) for c in chunks]
+        sparse_texts = [self._bm25_text(c) for c in chunks]
 
-        logger.info("  Indexer: encoding {} chunks (dense)", len(texts))
-        dense_embeddings = self._dense_encoder.encode(texts, show_progress_bar=True)
-        logger.info("  Indexer: encoding {} chunks (sparse BM25)", len(texts))
-        sparse_embeddings = list(self._sparse_encoder.embed(texts))
+        logger.info("  Indexer: encoding {} chunks (dense)", len(chunks))
+        dense_embeddings = self._dense_encoder.encode(
+            dense_texts, show_progress_bar=True
+        )
+        logger.info(
+            "  Indexer: encoding {} chunks (sparse BM25 over keywords)", len(chunks)
+        )
+        sparse_embeddings = list(self._sparse_encoder.embed(sparse_texts))
         logger.debug("  Indexer: building point payloads")
 
         points = []
@@ -64,6 +69,8 @@ class QdrantIndexer:
                     "section_path": chunk.section_path,
                     "description": chunk.description,
                     "image_path": chunk.image_path,
+                    "hypothetical_questions": chunk.hypothetical_questions,
+                    "keywords": chunk.keywords,
                 },
                 vector={
                     "dense_vector": dense_vec.tolist(),
@@ -83,13 +90,22 @@ class QdrantIndexer:
         return len(points)
 
     def _embed_text(self, chunk: Chunk) -> str:
-        """Build the string actually fed to the embedder.
+        """Text fed to the dense encoder.
 
-        For non-paragraph chunks with an LLM-generated `description`, append it.
-        Natural-language description embeds better than raw markdown/LaTeX, but
-        keeping the raw body in the embedding still helps BM25 catch exact terms
-        (model names, numbers). At generation time, the raw payload is used.
+        For non-paragraph chunks, appends the LLM description so natural
+        language rather than raw markdown/LaTeX drives the dense vector.
         """
         if chunk.description:
             return f"{chunk.text}\n\nDescription: {chunk.description}"
         return chunk.text
+
+    def _bm25_text(self, chunk: Chunk) -> str:
+        """Text fed to the sparse BM25 encoder.
+
+        Uses the curated keyword list when available — cleaner signal than
+        encoding the full chunk text which contains structural noise.
+        Falls back to the dense text if no keywords were generated.
+        """
+        if chunk.keywords:
+            return " ".join(chunk.keywords)
+        return self._embed_text(chunk)

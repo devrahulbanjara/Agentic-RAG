@@ -134,3 +134,84 @@ def _find_caption(chunk_text: str) -> str | None:
         if line.startswith("Caption:"):
             return line[len("Caption:") :].strip()
     return None
+
+
+def enrich_metadata(chunks: list[Chunk], llm: LLMProvider) -> list[Chunk]:
+    """Attach hypothetical questions and keywords to every chunk.
+
+    For non-paragraph chunks the LLM-generated description is used as input
+    (natural language embeds better than raw markdown/LaTeX). Falls back to
+    chunk text if no description exists.
+    """
+    enriched: list[Chunk] = []
+    counts = {"questions": 0, "keywords": 0, "rate_limited": 0, "failed": 0}
+
+    for i, chunk in enumerate(chunks, 1):
+        source_text = (
+            chunk.description
+            if (chunk.chunk_type != "paragraph" and chunk.description)
+            else chunk.text
+        )
+
+        questions = chunk.hypothetical_questions
+        keywords = chunk.keywords
+
+        try:
+            questions = llm.generate_questions(source_text)
+            counts["questions"] += 1
+        except LLMRateLimitError as exc:
+            counts["rate_limited"] += 1
+            retry_hint = (
+                f" (retry in ~{exc.retry_after_seconds:.0f}s)"
+                if exc.retry_after_seconds
+                else ""
+            )
+            logger.warning(
+                "  [{}/{}] Rate-limited on questions{}", i, len(chunks), retry_hint
+            )
+        except Exception:
+            counts["failed"] += 1
+            logger.warning(
+                "  [{}/{}] Failed to generate questions for {} chunk",
+                i,
+                len(chunks),
+                chunk.chunk_type,
+            )
+
+        try:
+            keywords = llm.extract_keywords(source_text)
+            counts["keywords"] += 1
+        except LLMRateLimitError as exc:
+            counts["rate_limited"] += 1
+            retry_hint = (
+                f" (retry in ~{exc.retry_after_seconds:.0f}s)"
+                if exc.retry_after_seconds
+                else ""
+            )
+            logger.warning(
+                "  [{}/{}] Rate-limited on keywords{}", i, len(chunks), retry_hint
+            )
+        except Exception:
+            counts["failed"] += 1
+            logger.warning(
+                "  [{}/{}] Failed to extract keywords for {} chunk",
+                i,
+                len(chunks),
+                chunk.chunk_type,
+            )
+
+        enriched.append(
+            chunk.model_copy(
+                update={"hypothetical_questions": questions, "keywords": keywords}
+            )
+        )
+
+    logger.info(
+        "Metadata enrichment done: {} question calls, {} keyword calls, "
+        "{} rate-limited, {} failed",
+        counts["questions"],
+        counts["keywords"],
+        counts["rate_limited"],
+        counts["failed"],
+    )
+    return enriched
