@@ -3,20 +3,32 @@ from pathlib import Path
 from loguru import logger
 
 from src.ingestion.schemas import Chunk
-from src.llm.base import LLMError, LLMProvider, LLMRateLimitError
+from src.llm.base import (
+    LLMDailyQuotaError,
+    LLMError,
+    LLMProvider,
+    LLMRateLimitError,
+)
+
+
+def _retry_hint(error: LLMRateLimitError) -> str:
+    """Format the optional ` (retry in ~6s)` suffix from a rate-limit error."""
+    if error.retry_after_seconds:
+        return f" (retry in ~{error.retry_after_seconds:.0f}s)"
+    return ""
 
 
 def _extract_table_markdown(chunk_text: str) -> str:
     """Strip the [Paper:...] / Caption: header lines, return raw markdown."""
     lines = chunk_text.splitlines()
     body_start = 0
-    for i, line in enumerate(lines):
+    for index, line in enumerate(lines):
         if line.startswith("[Paper:"):
-            body_start = i + 1
+            body_start = index + 1
         elif line.startswith("Caption:"):
-            body_start = i + 1
+            body_start = index + 1
         elif line.strip() == "":
-            body_start = i + 1
+            body_start = index + 1
         else:
             break
     return "\n".join(lines[body_start:]).strip()
@@ -47,7 +59,7 @@ def enrich_chunks(chunks: list[Chunk], llm: LLMProvider) -> list[Chunk]:
         "failed": 0,
         "rate_limited": 0,
     }
-    non_para_total = sum(1 for c in chunks if c.chunk_type != "paragraph")
+    non_paragraph_total = sum(1 for c in chunks if c.chunk_type != "paragraph")
     seen = 0
 
     for chunk in chunks:
@@ -59,7 +71,7 @@ def enrich_chunks(chunks: list[Chunk], llm: LLMProvider) -> list[Chunk]:
         logger.debug(
             "  [{}/{}] describing {} chunk ({})",
             seen,
-            non_para_total,
+            non_paragraph_total,
             chunk.chunk_type,
             " > ".join(chunk.section_path) or "—",
         )
@@ -89,23 +101,22 @@ def enrich_chunks(chunks: list[Chunk], llm: LLMProvider) -> list[Chunk]:
                 description = None
 
             enriched.append(chunk.model_copy(update={"description": description}))
-        except LLMRateLimitError as exc:
+        except LLMDailyQuotaError:
+            # Daily cap is spent — every remaining chunk would fail, so abort
+            # the whole run instead of logging the same failure hundreds of times.
+            raise
+        except LLMRateLimitError as error:
             counts["rate_limited"] += 1
-            retry_hint = (
-                f" (retry in ~{exc.retry_after_seconds:.0f}s)"
-                if exc.retry_after_seconds
-                else ""
-            )
             logger.warning(
                 "LLM rate-limited, could not enrich {} chunk{}",
                 chunk.chunk_type,
-                retry_hint,
+                _retry_hint(error),
             )
             enriched.append(chunk)
-        except LLMError as exc:
+        except LLMError as error:
             counts["failed"] += 1
             logger.warning(
-                "LLM error, could not enrich {} chunk: {}", chunk.chunk_type, exc
+                "LLM error, could not enrich {} chunk: {}", chunk.chunk_type, error
             )
             enriched.append(chunk)
         except Exception:
@@ -145,65 +156,74 @@ def enrich_metadata(chunks: list[Chunk], llm: LLMProvider) -> list[Chunk]:
     """
     enriched: list[Chunk] = []
     counts = {"questions": 0, "keywords": 0, "rate_limited": 0, "failed": 0}
+    total = len(chunks)
 
-    for i, chunk in enumerate(chunks, 1):
+    def call_llm(llm_function, text, name, action, default, chunk_type, position):
+        """Call one LLM enrichment. On failure, log it, count it, and return default."""
+        try:
+            result = llm_function(text)
+            counts[name] += 1
+            return result
+        except LLMDailyQuotaError:
+            raise
+        except LLMRateLimitError as error:
+            counts["rate_limited"] += 1
+            logger.warning(
+                "  [{}/{}] Rate-limited on {}{}",
+                position,
+                total,
+                name,
+                _retry_hint(error),
+            )
+        except Exception:
+            counts["failed"] += 1
+            logger.warning(
+                "  [{}/{}] Failed to {} for {} chunk",
+                position,
+                total,
+                action,
+                chunk_type,
+            )
+        return default
+
+    for position, chunk in enumerate(chunks, 1):
         source_text = (
             chunk.description
             if (chunk.chunk_type != "paragraph" and chunk.description)
             else chunk.text
         )
 
-        questions = chunk.hypothetical_questions
-        keywords = chunk.keywords
-
-        try:
-            questions = llm.generate_questions(source_text)
-            counts["questions"] += 1
-        except LLMRateLimitError as exc:
-            counts["rate_limited"] += 1
-            retry_hint = (
-                f" (retry in ~{exc.retry_after_seconds:.0f}s)"
-                if exc.retry_after_seconds
-                else ""
-            )
-            logger.warning(
-                "  [{}/{}] Rate-limited on questions{}", i, len(chunks), retry_hint
-            )
-        except Exception:
-            counts["failed"] += 1
-            logger.warning(
-                "  [{}/{}] Failed to generate questions for {} chunk",
-                i,
-                len(chunks),
-                chunk.chunk_type,
-            )
-
-        try:
-            keywords = llm.extract_keywords(source_text)
-            counts["keywords"] += 1
-        except LLMRateLimitError as exc:
-            counts["rate_limited"] += 1
-            retry_hint = (
-                f" (retry in ~{exc.retry_after_seconds:.0f}s)"
-                if exc.retry_after_seconds
-                else ""
-            )
-            logger.warning(
-                "  [{}/{}] Rate-limited on keywords{}", i, len(chunks), retry_hint
-            )
-        except Exception:
-            counts["failed"] += 1
-            logger.warning(
-                "  [{}/{}] Failed to extract keywords for {} chunk",
-                i,
-                len(chunks),
-                chunk.chunk_type,
-            )
+        questions = call_llm(
+            llm.generate_questions,
+            source_text,
+            "questions",
+            "generate questions",
+            chunk.hypothetical_questions,
+            chunk.chunk_type,
+            position,
+        )
+        keywords = call_llm(
+            llm.extract_keywords,
+            source_text,
+            "keywords",
+            "extract keywords",
+            chunk.keywords,
+            chunk.chunk_type,
+            position,
+        )
 
         enriched.append(
             chunk.model_copy(
                 update={"hypothetical_questions": questions, "keywords": keywords}
             )
+        )
+        logger.info(
+            "  [{}/{}] {} chunk done: {} questions, {} keywords",
+            position,
+            total,
+            chunk.chunk_type,
+            len(questions),
+            len(keywords),
         )
 
     logger.info(

@@ -14,6 +14,15 @@ class LLMRateLimitError(LLMError):
         self.retry_after_seconds = retry_after_seconds
 
 
+class LLMDailyQuotaError(LLMError):
+    """Raised when the daily request cap is reached and won't reset until midnight.
+
+    Distinct from `LLMRateLimitError`: a per-minute limit clears in seconds and is
+    worth waiting out, but the daily cap means every further call this run will
+    fail, so callers should abort rather than retry chunk-by-chunk.
+    """
+
+
 class LLMProvider(ABC):
     """Adapter base for any LLM backend (Gemini, Groq, local).
 

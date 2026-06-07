@@ -14,14 +14,14 @@ def is_noise(text: str, min_chars: int) -> bool:
     Returns:
         True if the text should be skipped, False if it's real content.
     """
-    t = text.strip()
-    if len(t) < min_chars:
+    stripped = text.strip()
+    if len(stripped) < min_chars:
         return True
-    if re.match(r"^DRAFT\b", t):
+    if re.match(r"^DRAFT\b", stripped):
         return True
-    if re.match(r"^Keywords?:", t):
+    if re.match(r"^Keywords?:", stripped):
         return True
-    if re.match(r"^[\w.\-]+@[\w.\-]+\.\w+$", t):
+    if re.match(r"^[\w.\-]+@[\w.\-]+\.\w+$", stripped):
         return True
     return False
 
@@ -42,11 +42,11 @@ def table_to_markdown(rows: list[list[str]]) -> str:
     if not rows:
         return ""
     header = rows[0]
-    md = "| " + " | ".join(str(c) for c in header) + " |\n"
-    md += "| " + " | ".join("---" for _ in header) + " |\n"
+    markdown = "| " + " | ".join(str(cell) for cell in header) + " |\n"
+    markdown += "| " + " | ".join("---" for _ in header) + " |\n"
     for row in rows[1:]:
-        md += "| " + " | ".join(str(c) for c in row) + " |\n"
-    return md.strip()
+        markdown += "| " + " | ".join(str(cell) for cell in row) + " |\n"
+    return markdown.strip()
 
 
 def should_merge(current: str, next_text: str, max_chars: int) -> bool:

@@ -15,15 +15,15 @@ from src.ingestion.schemas import ParsedDocument
 
 
 class DoclingParser:
-    def __init__(self, cfg: DoclingSettings) -> None:
+    def __init__(self, config: DoclingSettings) -> None:
         pipeline_options = PdfPipelineOptions()
-        pipeline_options.do_ocr = cfg.do_ocr
-        pipeline_options.do_formula_enrichment = cfg.do_formula_enrichment
+        pipeline_options.do_ocr = config.do_ocr
+        pipeline_options.do_formula_enrichment = config.do_formula_enrichment
         pipeline_options.generate_page_images = False
-        pipeline_options.generate_picture_images = cfg.generate_picture_images
-        pipeline_options.images_scale = cfg.images_scale
+        pipeline_options.generate_picture_images = config.generate_picture_images
+        pipeline_options.images_scale = config.images_scale
         pipeline_options.accelerator_options = AcceleratorOptions(
-            num_threads=cfg.num_threads,
+            num_threads=config.num_threads,
             device=AcceleratorDevice.CPU,
         )
         self._converter = DocumentConverter(
@@ -31,7 +31,7 @@ class DoclingParser:
                 InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options),
             }
         )
-        self._figure_output_dir = Path(cfg.figure_output_dir)
+        self._figure_output_dir = Path(config.figure_output_dir)
 
     def parse(self, pdf_path: Path) -> ParsedDocument:
         """Parse a single PDF into a structured document."""

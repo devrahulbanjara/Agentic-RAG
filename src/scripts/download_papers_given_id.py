@@ -18,14 +18,14 @@ paper_ids = [
 async def download(client, paper_id):
     url = f"https://arxiv.org/pdf/{paper_id}.pdf"
     response = await client.get(url, follow_redirects=True)
-    with open(f"data/{paper_id}.pdf", "wb") as f:
-        f.write(response.content)
+    with open(f"data/{paper_id}.pdf", "wb") as pdf_file:
+        pdf_file.write(response.content)
     print(f"Downloaded {paper_id}")
 
 
 async def main():
     async with httpx.AsyncClient() as client:
-        tasks = [download(client, pid) for pid in paper_ids]
+        tasks = [download(client, paper_id) for paper_id in paper_ids]
         await asyncio.gather(*tasks)
 
 

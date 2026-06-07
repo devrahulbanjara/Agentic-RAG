@@ -21,19 +21,19 @@ class PromptLibrary:
             name: PromptSpec(**body)
             for name, body in (data.get("prompts") or {}).items()
         }
-        self._env = Environment(
+        self._jinja_env = Environment(
             undefined=StrictUndefined,
             trim_blocks=True,
             lstrip_blocks=True,
             autoescape=False,
         )
 
-    def render(self, name: str, **vars: Any) -> str:
+    def render(self, name: str, **variables: Any) -> str:
         """Render the named prompt with the given variables."""
         spec = self._specs.get(name)
         if spec is None:
             raise KeyError(f"Unknown prompt: {name!r}")
-        return self._env.from_string(spec.template).render(**vars).strip()
+        return self._jinja_env.from_string(spec.template).render(**variables).strip()
 
 
 def get_prompts() -> PromptLibrary:

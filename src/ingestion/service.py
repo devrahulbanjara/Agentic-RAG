@@ -17,50 +17,54 @@ class IngestionService:
     def __init__(
         self,
         parser: DoclingParser,
-        grobid_cfg: GrobidSettings,
-        chunking_cfg: ChunkingSettings,
+        grobid_config: GrobidSettings,
+        chunking_config: ChunkingSettings,
         llm: LLMProvider | None = None,
     ) -> None:
         self._parser = parser
-        self._grobid = grobid_cfg
-        self._chunking = chunking_cfg
+        self._grobid = grobid_config
+        self._chunking = chunking_config
         self._llm = llm
 
     def process_pdf(self, pdf_path: Path) -> tuple[ParsedDocument, list[Chunk]]:
         """Parse one PDF, extract references, chunk, optionally enrich."""
         logger.info("Step 1/4: Parsing PDF with Docling")
-        doc = self._parser.parse(pdf_path)
+        document = self._parser.parse(pdf_path)
         logger.debug(
-            "{}: parsed {} top-level sections", doc.arxiv_id, len(doc.sections)
+            "{}: parsed {} top-level sections",
+            document.arxiv_id,
+            len(document.sections),
         )
 
         if self._grobid.enabled:
             logger.info("Step 2/4: Extracting references via GROBID")
-            doc.references = extract_references(
+            document.references = extract_references(
                 self._grobid.url, self._grobid.timeout, pdf_path
             )
-            logger.info("{}: {} references", doc.arxiv_id, len(doc.references))
+            logger.info(
+                "{}: {} references", document.arxiv_id, len(document.references)
+            )
         else:
             logger.debug("GROBID disabled, skipping reference extraction")
 
         logger.info("Step 3/4: Chunking document")
-        chunks = chunk_document(doc, self._chunking)
-        type_counts = _count_chunk_types(chunks)
+        chunks = chunk_document(document, self._chunking)
+        chunk_type_counts = _count_chunk_types(chunks)
         logger.info(
             "{}: {} chunks ({} paragraph, {} table, {} figure, {} equation)",
-            doc.arxiv_id,
+            document.arxiv_id,
             len(chunks),
-            type_counts["paragraph"],
-            type_counts["table"],
-            type_counts["figure"],
-            type_counts["equation"],
+            chunk_type_counts["paragraph"],
+            chunk_type_counts["table"],
+            chunk_type_counts["figure"],
+            chunk_type_counts["equation"],
         )
 
         if self._llm is not None:
-            non_para = len(chunks) - type_counts["paragraph"]
+            non_paragraph_count = len(chunks) - chunk_type_counts["paragraph"]
             logger.info(
                 "Step 4/5: Enriching {} non-paragraph chunks with descriptions",
-                non_para,
+                non_paragraph_count,
             )
             chunks = enrich_chunks(chunks, self._llm)
             logger.info(
@@ -71,11 +75,11 @@ class IngestionService:
         else:
             logger.info("Step 4/5: Enrichment skipped (--no-enrich)")
 
-        return doc, chunks
+        return document, chunks
 
 
 def _count_chunk_types(chunks: list[Chunk]) -> dict[str, int]:
     counts = {"paragraph": 0, "table": 0, "figure": 0, "equation": 0}
-    for c in chunks:
-        counts[c.chunk_type] = counts.get(c.chunk_type, 0) + 1
+    for chunk in chunks:
+        counts[chunk.chunk_type] = counts.get(chunk.chunk_type, 0) + 1
     return counts

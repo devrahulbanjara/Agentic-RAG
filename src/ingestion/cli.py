@@ -16,6 +16,7 @@ from src.ingestion.docling_parser import DoclingParser
 from src.ingestion.indexer import QdrantIndexer
 from src.ingestion.service import IngestionService
 from src.llm import get_llm_provider
+from src.llm.base import LLMDailyQuotaError
 
 _LOG_FORMAT = (
     "<green>{time:HH:mm:ss}</green> | "
@@ -82,12 +83,12 @@ def main(argv: list[str] | None = None) -> None:
         logger.error("No valid PDF files to process")
         sys.exit(1)
 
-    doc_parser = DoclingParser(settings.docling)
+    document_parser = DoclingParser(settings.docling)
     llm = None if args.no_enrich else get_llm_provider()
     service = IngestionService(
-        parser=doc_parser,
-        grobid_cfg=settings.grobid,
-        chunking_cfg=settings.chunking,
+        parser=document_parser,
+        grobid_config=settings.grobid,
+        chunking_config=settings.chunking,
         llm=llm,
     )
     indexer = QdrantIndexer(settings.qdrant)
@@ -95,29 +96,32 @@ def main(argv: list[str] | None = None) -> None:
     total_chunks = 0
     total_refs = 0
     processed = 0
-    for i, path in enumerate(pdf_paths, 1):
-        logger.info("[{}/{}] === START {} ===", i, len(pdf_paths), path.name)
+    for index, path in enumerate(pdf_paths, 1):
+        logger.info("[{}/{}] === START {} ===", index, len(pdf_paths), path.name)
         try:
-            doc, chunks = service.process_pdf(path)
+            document, chunks = service.process_pdf(path)
             if chunks:
                 logger.info(
-                    "[{}/{}] Indexing {} chunks", i, len(pdf_paths), len(chunks)
+                    "[{}/{}] Indexing {} chunks", index, len(pdf_paths), len(chunks)
                 )
                 indexer.index(chunks)
             total_chunks += len(chunks)
-            total_refs += len(doc.references)
+            total_refs += len(document.references)
             processed += 1
             logger.info(
                 "[{}/{}] === DONE {} ({} chunks, {} refs) ===",
-                i,
+                index,
                 len(pdf_paths),
                 path.name,
                 len(chunks),
-                len(doc.references),
+                len(document.references),
             )
+        except LLMDailyQuotaError as error:
+            logger.warning("{} — stopping after {} papers", error, processed)
+            break
         except Exception:
             logger.exception(
-                "[{}/{}] FAILED {}, skipping", i, len(pdf_paths), path.name
+                "[{}/{}] FAILED {}, skipping", index, len(pdf_paths), path.name
             )
 
     logger.info(
