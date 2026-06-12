@@ -31,7 +31,7 @@ class QdrantIndexer:
                     size=self._embedding_dim, distance=models.Distance.COSINE
                 ),
             },
-            sparse_vectors_config={"keywords_bm25": models.SparseVectorParams()},
+            sparse_vectors_config={"keywords_sparse": models.SparseVectorParams()},
             hnsw_config=models.HnswConfigDiff(m=32, ef_construct=256),
         )
         self._client.create_payload_index(
@@ -82,7 +82,7 @@ class QdrantIndexer:
                 vector={
                     "content": content_vector,
                     "question": question_vector,
-                    "keywords_bm25": models.SparseVector(
+                    "keywords_sparse": models.SparseVector(
                         indices=keyword_vector.indices,
                         values=keyword_vector.values,
                     ),
