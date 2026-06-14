@@ -10,5 +10,5 @@ router = APIRouter(prefix="/retrieve", tags=["retrieval"])
 def retrieve(
     request: RetrievalRequest, service: RetrievalServiceDep
 ) -> RetrievalResponse:
-    chunks = service.retrieve(request.query, request.limit)
+    chunks = service.retrieve(request.query, request.limit, request.mmr_lambda)
     return RetrievalResponse(query=request.query, chunks=chunks)
