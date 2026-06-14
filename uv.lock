@@ -2835,6 +2835,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "qdrant-client" },
     { name = "requests" },
+    { name = "sentence-transformers" },
 ]
 
 [package.dev-dependencies]
@@ -2866,6 +2867,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "qdrant-client", specifier = ">=1.18.0" },
     { name = "requests", specifier = ">=2.34.2" },
+    { name = "sentence-transformers", specifier = ">=5.5.1" },
 ]
 
 [package.metadata.requires-dev]

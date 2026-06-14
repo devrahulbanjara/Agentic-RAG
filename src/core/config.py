@@ -39,6 +39,12 @@ class QdrantSettings(BaseSettings):
     embedding_dim: int = 1024
 
 
+# Retrieval: reranker
+class RerankerSettings(BaseSettings):
+    model_config = _ENV
+    model: str = "BAAI/bge-reranker-v2-m3"
+
+
 # Parsing: Docling
 class DoclingSettings(BaseSettings):
     model_config = _ENV
@@ -95,6 +101,7 @@ class Settings(BaseSettings):
     app: AppSettings = Field(default_factory=AppSettings)
     postgres: PostgresSettings = Field(default_factory=PostgresSettings)
     qdrant: QdrantSettings = Field(default_factory=QdrantSettings)
+    reranker: RerankerSettings = Field(default_factory=RerankerSettings)
     docling: DoclingSettings = Field(default_factory=DoclingSettings)
     grobid: GrobidSettings = Field(default_factory=GrobidSettings)
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)

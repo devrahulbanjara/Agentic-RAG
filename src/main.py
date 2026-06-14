@@ -6,6 +6,7 @@ from qdrant_client import QdrantClient
 
 from src.core.config import settings
 from src.core.embeddings import BGEM3Embedder
+from src.core.reranker import BGEReranker
 from src.retrieval.router import router as retrieval_router
 from src.retrieval.service import RetrievalService
 
@@ -16,6 +17,7 @@ async def lifespan(app: FastAPI):
     app.state.retrieval_service = RetrievalService(
         qdrant=qdrant,
         embedder=BGEM3Embedder(settings.qdrant.embedding_model),
+        reranker=BGEReranker(settings.reranker.model),
         collection_name=settings.qdrant.collection,
     )
     yield
@@ -36,7 +38,7 @@ def _retrieve(message: str, history: list[dict]) -> str:
     blocks = []
     for number, chunk in enumerate(chunks, 1):
         blocks.append(
-            f"**Chunk {number}** (score: {chunk.score:.4f}, arxiv: {chunk.arxiv_id})\n\n"
+            f"**Chunk {number}** (reranker score: {chunk.reranker_score:.4f}, arxiv: {chunk.arxiv_id})\n\n"
             f"{chunk.text}"
         )
     return "\n\n---\n\n".join(blocks)
