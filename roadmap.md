@@ -218,7 +218,7 @@ Batch all 30 (query, chunk) pairs into one forward pass. Takes ~100ms on a GPU. 
 
 ---
 
-### Step 11 — MMR diversity filtering (conditional)
+### Step 11 — MMR diversity filtering (conditional) ✅
 
 **What we have now:** Top 8 reranked chunks. For factual questions ("What BLEU on WMT14?") this is great — we want the most relevant chunks, even if they're similar. But for conceptual questions ("How does self-attention work?"), 5 of 8 chunks might all say almost the same thing about Q*K^T, wasting context window space.
 

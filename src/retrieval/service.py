@@ -2,14 +2,23 @@ from qdrant_client import QdrantClient, models
 
 from src.core.embeddings import BGEM3Embedder
 from src.core.reranker import BGEReranker
+from src.retrieval.mmr import mmr_select_diverse
 from src.retrieval.schemas import RetrievedChunk
 
+# How many results each of the three searches returns.
 RESULTS_PER_SEARCH = 50
+
+# RRF constant that keeps a single rank-1 hit from dominating the merge.
 RRF_K = 60
-# How many merged results we rerank. Wider than the final answer so a chunk
-# only one search ranked well still gets read by the cross-encoder.
+
+# How many merged results we hand to the reranker.
 RESULTS_TO_RERANK = 30
+
+# How many chunks we return when the caller doesn't ask for a specific number.
 DEFAULT_LIMIT = 8
+
+# Drop the chunks finally that have the reranker score below this.
+MIN_RELEVANCE_SCORE = 0.5
 
 
 class RetrievalService:
@@ -25,7 +34,9 @@ class RetrievalService:
         self.reranker = reranker
         self.collection_name = collection_name
 
-    def retrieve(self, query: str, limit: int = DEFAULT_LIMIT) -> list[RetrievedChunk]:
+    def retrieve(
+        self, query: str, limit: int = DEFAULT_LIMIT, mmr_lambda: float | None = None
+    ) -> list[RetrievedChunk]:
         encoded = self.embedder.embed([query])
         dense_vector = encoded.dense[0]
         sparse_vector = encoded.sparse[0]
@@ -58,16 +69,12 @@ class RetrievalService:
         )
 
         merged = self._merge_results([r.points for r in responses])
-        return self._rerank(query, merged, limit)
+        return self._rerank(query, merged, limit, mmr_lambda)
 
     def _merge_results(
         self, search_results: list[list[models.ScoredPoint]]
     ) -> list[dict]:
-        """Merge the three searches with RRF, return the top chunk payloads.
-
-        A chunk found by several searches accumulates score; ``RRF_K`` keeps a
-        single rank-1 hit from dominating chunks that placed well everywhere.
-        """
+        """Merge the three searches with RRF, return the top chunk payloads."""
         scores: dict[str, float] = {}
         payloads: dict[str, dict] = {}
         for results in search_results:
@@ -79,30 +86,31 @@ class RetrievalService:
         return [payloads[point_id] for point_id in ranked_ids[:RESULTS_TO_RERANK]]
 
     def _rerank(
-        self, query: str, chunks: list[dict], limit: int
+        self, query: str, chunks: list[dict], limit: int, mmr_lambda: float | None
     ) -> list[RetrievedChunk]:
         """Rescore the merged chunks with the cross-encoder, keep the top ``limit``."""
-        scores = self.reranker.rerank(
-            query, [self._chunk_text(chunk) for chunk in chunks]
-        )
-        ranked = sorted(zip(scores, chunks), key=lambda pair: pair[0], reverse=True)
+        texts = [self._chunk_text(chunk) for chunk in chunks]
+        scores = self.reranker.rerank(query, texts)
+
+        if mmr_lambda is None:
+            order = sorted(range(len(chunks)), key=lambda i: scores[i], reverse=True)
+        else:
+            vectors = self.embedder.embed(texts, return_sparse=False).dense
+            order = mmr_select_diverse(scores, vectors, limit, mmr_lambda)
+
+        order = [i for i in order if scores[i] >= MIN_RELEVANCE_SCORE]
+
         return [
             RetrievedChunk(
-                text=chunk["text"],
-                reranker_score=score,
-                arxiv_id=chunk["arxiv_id"],
+                text=chunks[i]["text"],
+                reranker_score=scores[i],
+                arxiv_id=chunks[i]["arxiv_id"],
             )
-            for score, chunk in ranked[:limit]
+            for i in order[:limit]
         ]
 
     def _chunk_text(self, chunk: dict) -> str:
-        """Text the cross-encoder reads — mirrors the indexer's content lane.
-
-        Non-paragraph chunks store raw markdown/LaTeX in ``text`` and the LLM
-        description separately; the reranker, like the content embedder, scores
-        better on the natural-language description appended. Kept in sync with
-        ``QdrantIndexer._content_text``.
-        """
+        """Text the cross-encoder reads: chunk text plus its LLM description."""
         description = chunk.get("description")
         if description:
             return f"{chunk['text']}\n\nDescription: {description}"
