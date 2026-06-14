@@ -158,7 +158,7 @@ The old `dense_vector` becomes `content`. The old `bm25_sparse_vector` (which en
 
 ---
 
-### Step 8 — Upgrade embedding model and Qdrant collection
+### Step 8 — Upgrade embedding model and Qdrant collection ✅
 
 **What we have now:** Chunks with all their metadata, but still embedded with `BAAI/bge-small-en` (384-dim, English-only, no sparse output). One dense vector and one separate BM25 sparse vector per chunk. The hypothetical questions and keywords from step 7 are stored in the payload but not embedded yet.
 
@@ -182,7 +182,7 @@ Re-embed every chunk. Keep the old collection around so we can compare retrieval
 
 ## Phase 2 — Retrieval + Generation Engine (query to answer)
 
-### Step 9 — Three-lane hybrid retrieval
+### Step 9 — Three-lane hybrid retrieval ✅
 
 **What we have now:** Three vectors per chunk in Qdrant, but retrieval only uses one vector at a time. We're leaving quality on the table.
 
@@ -206,7 +206,7 @@ After RRF, keep the top 30 candidates.
 
 ---
 
-### Step 10 — Reranking
+### Step 10 — Reranking ✅
 
 **What we have now:** Top 30 candidates from hybrid retrieval. But vector similarity and BM25 are rough signals. A chunk about "training took 3.5 days" might rank high for "What BLEU score?" just because both mention "Transformer."
 

@@ -38,9 +38,9 @@ def _make_element(
     is attached to the element.
     """
     if isinstance(item, TableItem):
-        df = item.export_to_dataframe(doc=doc)
-        rows = [[str(c) for c in df.columns]] + [
-            [str(v) for v in row] for row in df.values
+        dataframe = item.export_to_dataframe(doc=doc)
+        rows = [[str(column) for column in dataframe.columns]] + [
+            [str(value) for value in row] for row in dataframe.values
         ]
         return DocumentElement(
             element_type="table",
@@ -75,12 +75,12 @@ def _make_figure_saver(
     def save(item: PictureItem) -> str | None:
         if item.image is None:
             return None
-        out_dir = figure_dir / arxiv_id
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / f"fig_{counter['idx']}.png"
-        item.image.pil_image.save(str(out_path))
+        output_dir = figure_dir / arxiv_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"fig_{counter['idx']}.png"
+        item.image.pil_image.save(str(output_path))
         counter["idx"] += 1
-        return str(out_path)
+        return str(output_path)
 
     return save
 
@@ -130,7 +130,7 @@ def build_tree(
         if element is None:
             continue
 
-        target = section_stack[-1][1].content if section_stack else abstract
-        target.append(element)
+        destination = section_stack[-1][1].content if section_stack else abstract
+        destination.append(element)
 
     return sections, abstract

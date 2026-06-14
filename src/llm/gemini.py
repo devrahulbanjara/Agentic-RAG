@@ -1,5 +1,4 @@
 import re
-import time
 from pathlib import Path
 
 from google import genai
@@ -11,18 +10,21 @@ from PIL import Image
 from src.core.config import settings
 from src.llm.base import LLMError, LLMProvider, LLMRateLimitError
 from src.llm.prompts import PromptLibrary, get_prompts
+from src.llm.rate_limiter import FreeTierRateLimiter
 from src.llm.schemas import Description, HypotheticalQuestions, Keywords
 
 _RETRY_DELAY_RE = re.compile(r"retryDelay['\"]?\s*:\s*['\"]?(\d+(?:\.\d+)?)s")
+# Rough fallback when count_tokens is unavailable; ~4 chars/token for English text.
+_CHARS_PER_TOKEN = 4
 
 
 def _parse_retry_delay(message: str) -> float | None:
     """Pull `retryDelay: '6s'` out of a Gemini 429 error message, if present."""
-    m = _RETRY_DELAY_RE.search(message)
-    if not m:
+    match = _RETRY_DELAY_RE.search(message)
+    if not match:
         return None
     try:
-        return float(m.group(1))
+        return float(match.group(1))
     except ValueError:
         return None
 
@@ -35,22 +37,34 @@ class GeminiProvider(LLMProvider):
     ) -> None:
         self._client = genai.Client(api_key=settings.llm.gemini_api_key)
         self._model = model or settings.llm.gemini_model
-        self._sleep_seconds = max(0.0, settings.llm.sleep_seconds)
-        self._last_call_ts: float | None = None
+        self._output_token_buffer = settings.llm.output_token_buffer
+        self._limiter = FreeTierRateLimiter(
+            max_rpm=settings.llm.max_rpm,
+            max_tpm=settings.llm.max_tpm,
+            max_rpd=settings.llm.max_rpd,
+            state_path=Path(settings.llm.daily_quota_state_path),
+        )
         self._prompts = prompts or get_prompts()
 
-    def _throttle(self) -> None:
-        """Sleep just enough to keep at least `llm_sleep_seconds` between calls."""
-        if self._sleep_seconds <= 0 or self._last_call_ts is None:
-            return
-        elapsed = time.monotonic() - self._last_call_ts
-        remaining = self._sleep_seconds - elapsed
-        if remaining > 0:
-            logger.debug("    Throttling LLM: sleeping {:.1f}s", remaining)
-            time.sleep(remaining)
+    def _estimate_tokens(self, contents) -> int:
+        """Count input tokens up front so the limiter can budget before sending.
+
+        count_tokens is free and handles multimodal contents (figure images), but
+        a transient failure must never sink enrichment — fall back to a char-based
+        guess, which the response's actual usage corrects afterward anyway.
+        """
+        try:
+            counted = self._client.models.count_tokens(
+                model=self._model, contents=contents
+            )
+            return counted.total_tokens
+        except Exception:
+            text_length = sum(len(part) for part in contents if isinstance(part, str))
+            return text_length // _CHARS_PER_TOKEN
 
     def _generate(self, contents, schema):
-        self._throttle()
+        estimated_tokens = self._estimate_tokens(contents) + self._output_token_buffer
+        self._limiter.acquire(estimated_tokens)
         logger.debug("    Gemini call ({}, schema={})", self._model, schema.__name__)
         try:
             response = self._client.models.generate_content(
@@ -63,17 +77,19 @@ class GeminiProvider(LLMProvider):
                     response_schema=schema,
                 ),
             )
-        except genai_errors.ClientError as exc:
-            if getattr(exc, "code", None) == 429:
+        except genai_errors.ClientError as error:
+            if getattr(error, "code", None) == 429:
                 raise LLMRateLimitError(
                     "Gemini quota exceeded (HTTP 429)",
-                    retry_after_seconds=_parse_retry_delay(str(exc)),
-                ) from exc
-            raise LLMError(f"Gemini client error: {exc}") from exc
-        except genai_errors.APIError as exc:
-            raise LLMError(f"Gemini API error: {exc}") from exc
-        finally:
-            self._last_call_ts = time.monotonic()
+                    retry_after_seconds=_parse_retry_delay(str(error)),
+                ) from error
+            raise LLMError(f"Gemini client error: {error}") from error
+        except genai_errors.APIError as error:
+            raise LLMError(f"Gemini API error: {error}") from error
+
+        usage = response.usage_metadata
+        actual_tokens = usage.total_token_count if usage else None
+        self._limiter.record(actual_tokens if actual_tokens else estimated_tokens)
         return response.parsed
 
     def describe_table(self, markdown: str, caption: str | None = None) -> str:

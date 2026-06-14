@@ -40,6 +40,10 @@ Bias toward caution over speed. For trivial tasks, use judgment.
 - Multiple interpretations exist → present them, don't pick silently.
 - Simpler approach exists → say so. Push back when warranted.
 - Unclear → stop, name the confusion, ask.
+- **Trace the blast radius** — read surrounding code; does this affect anywhere else? Is there a cleaner way? After a backend change, confirm the frontend that depends on it still works.
+- **Solve for the long term**, never the quick patch. **Don't over-engineer** — simplest solution that holds up in prod wins.
+- **DRY** — make logic reusable; check whether something exists before building it. Change one place → changes everywhere. Keep it consistent.
+- **Write like a human, not an AI** — match existing patterns (see `human-like-code` skill).
 
 ## 2. Simplicity first
 
@@ -72,6 +76,13 @@ Define success criteria. Loop until verified.
 - "Add validation" → "Write tests for invalid inputs, then make them pass"
 - "Fix the bug" → "Write a test that reproduces it, then make it pass"
 - "Refactor X" → "Tests pass before and after"
+
+## 5. Engineering Principles
+
+**Readability** — names carry the meaning (clear over clever); comments explain *why*, not *what*; small single-purpose units; shallow nesting (return early); match the file you're in.
+
+**Maintainability** — handle errors explicitly (no silent `catch`, log with context). **DRY is for genuinely shared logic — prefer a little duplication over the wrong abstraction.** No premature abstraction. Don't bundle unrelated refactors into a fix.
+
 
 Multi-step → state brief plan with per-step verification.
 

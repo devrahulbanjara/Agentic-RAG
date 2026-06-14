@@ -35,9 +35,14 @@ class QdrantSettings(BaseSettings):
     model_config = _ENV
     url: str = Field(alias="QDRANT_URL")
     collection: str = Field(default="arxiv_papers", alias="QDRANT_COLLECTION")
-    dense_model: str = "BAAI/bge-small-en"
-    sparse_model: str = "qdrant/bm25"
-    embedding_dim: int = 384
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_dim: int = 1024
+
+
+# Retrieval: reranker
+class RerankerSettings(BaseSettings):
+    model_config = _ENV
+    model: str = "BAAI/bge-reranker-v2-m3"
 
 
 # Parsing: Docling
@@ -75,7 +80,16 @@ class ChunkingSettings(BaseSettings):
 class LLMSettings(BaseSettings):
     model_config = _ENV
     provider: str = Field(default="gemini", alias="LLM_PROVIDER")
-    sleep_seconds: float = Field(default=13.0, alias="LLM_SLEEP_SECONDS")
+    # Gemini free-tier quotas (per Google Cloud project).
+    max_rpm: int = Field(default=15, alias="LLM_MAX_RPM")
+    max_tpm: int = Field(default=250_000, alias="LLM_MAX_TPM")
+    max_rpd: int = Field(default=1_000, alias="LLM_MAX_RPD")
+    # Padding added to each request's counted input tokens to cover the response
+    # we haven't generated yet, so the TPM check isn't blind to output cost.
+    output_token_buffer: int = Field(default=256, alias="LLM_OUTPUT_TOKEN_BUFFER")
+    daily_quota_state_path: str = Field(
+        default="data/.gemini_quota.json", alias="LLM_QUOTA_STATE_PATH"
+    )
     gemini_api_key: str = Field(alias="GEMINI_API_KEY")
     gemini_model: str = Field(alias="GEMINI_MODEL")
 
@@ -87,6 +101,7 @@ class Settings(BaseSettings):
     app: AppSettings = Field(default_factory=AppSettings)
     postgres: PostgresSettings = Field(default_factory=PostgresSettings)
     qdrant: QdrantSettings = Field(default_factory=QdrantSettings)
+    reranker: RerankerSettings = Field(default_factory=RerankerSettings)
     docling: DoclingSettings = Field(default_factory=DoclingSettings)
     grobid: GrobidSettings = Field(default_factory=GrobidSettings)
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
