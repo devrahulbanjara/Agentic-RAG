@@ -11,10 +11,16 @@ from src.core.config import settings
 from src.llm.base import LLMError, LLMProvider, LLMRateLimitError
 from src.llm.prompts import PromptLibrary, get_prompts
 from src.llm.rate_limiter import FreeTierRateLimiter
-from src.llm.schemas import Description, HypotheticalQuestions, Keywords
+from src.llm.schemas import (
+    Description,
+    HypotheticalQuestions,
+    Keywords,
+    QueryClassification,
+    QueryVariations,
+    SubQuestions,
+)
 
 _RETRY_DELAY_RE = re.compile(r"retryDelay['\"]?\s*:\s*['\"]?(\d+(?:\.\d+)?)s")
-# Rough fallback when count_tokens is unavailable; ~4 chars/token for English text.
 _CHARS_PER_TOKEN = 4
 
 
@@ -62,7 +68,7 @@ class GeminiProvider(LLMProvider):
             text_length = sum(len(part) for part in contents if isinstance(part, str))
             return text_length // _CHARS_PER_TOKEN
 
-    def _generate(self, contents, schema):
+    def _generate(self, contents, schema, *, system_instruction=None):
         estimated_tokens = self._estimate_tokens(contents) + self._output_token_buffer
         self._limiter.acquire(estimated_tokens)
         logger.debug("    Gemini call ({}, schema={})", self._model, schema.__name__)
@@ -72,7 +78,7 @@ class GeminiProvider(LLMProvider):
                 contents=contents,
                 config=types.GenerateContentConfig(
                     thinking_config=types.ThinkingConfig(thinking_level="minimal"),
-                    system_instruction=self._prompts.system,
+                    system_instruction=system_instruction or self._prompts.system,
                     response_mime_type="application/json",
                     response_schema=schema,
                 ),
@@ -119,3 +125,18 @@ class GeminiProvider(LLMProvider):
         prompt = self._prompts.render("generate_questions", text=text)
         result: HypotheticalQuestions = self._generate([prompt], HypotheticalQuestions)
         return result.questions
+
+    def classify_query(self, query: str) -> QueryClassification:
+        prompt = self._prompts.render("classify_query", query=query)
+        system = self._prompts.render("classify_query_system")
+        return self._generate([prompt], QueryClassification, system_instruction=system)
+
+    def expand_query(self, query: str, count: int) -> list[str]:
+        prompt = self._prompts.render("expand_query", query=query, count=count)
+        result: QueryVariations = self._generate([prompt], QueryVariations)
+        return result.variations
+
+    def decompose_query(self, query: str) -> list[str]:
+        prompt = self._prompts.render("decompose_query", query=query)
+        result: SubQuestions = self._generate([prompt], SubQuestions)
+        return result.sub_questions

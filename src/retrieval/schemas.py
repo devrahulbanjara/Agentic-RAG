@@ -2,15 +2,13 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
+from src.llm.schemas import QueryCategory, QueryIntent
+
 QueryStr = Annotated[str, Field(min_length=1, max_length=500)]
-LimitInt = Annotated[int, Field(default=8, ge=1, le=20)]
-MmrLambda = Annotated[float, Field(ge=0.0, le=1.0)]
 
 
 class RetrievalRequest(BaseModel):
     query: QueryStr
-    limit: LimitInt = 8
-    mmr_lambda: MmrLambda | None = None
 
 
 class RetrievedChunk(BaseModel):
@@ -19,6 +17,9 @@ class RetrievedChunk(BaseModel):
     arxiv_id: str
 
 
-class RetrievalResponse(BaseModel):
+class RoutedRetrievalResponse(BaseModel):
     query: str
-    chunks: list[RetrievedChunk]
+    intent: QueryIntent
+    category: QueryCategory | None = None
+    message: str | None = None
+    chunks: list[RetrievedChunk] = []

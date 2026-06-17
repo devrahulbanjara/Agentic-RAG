@@ -94,6 +94,17 @@ class LLMSettings(BaseSettings):
     gemini_model: str = Field(alias="GEMINI_MODEL")
 
 
+# Reasoning: query router
+class ReasoningSettings(BaseSettings):
+    model_config = _ENV
+    routing_enabled: bool = Field(default=True, alias="ROUTING_ENABLED")
+    classifier_confidence_floor: float = Field(
+        default=0.5, alias="CLASSIFIER_CONFIDENCE_FLOOR"
+    )
+    # Falls back to the enrichment model when unset.
+    classifier_model: str | None = Field(default=None, alias="CLASSIFIER_MODEL")
+
+
 # Umbrella
 class Settings(BaseSettings):
     model_config = _ENV
@@ -106,6 +117,7 @@ class Settings(BaseSettings):
     grobid: GrobidSettings = Field(default_factory=GrobidSettings)
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
+    reasoning: ReasoningSettings = Field(default_factory=ReasoningSettings)
 
 
 settings = Settings()
