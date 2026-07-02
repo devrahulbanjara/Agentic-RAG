@@ -64,3 +64,7 @@ class LLMProvider(ABC):
     @abstractmethod
     def decompose_query(self, query: str) -> list[str]:
         """Return standalone sub-questions a comparative query decomposes into."""
+
+    @abstractmethod
+    def generate_answer(self, query: str, context: str) -> str:
+        """Answer the query using only the given context, citing each claim."""

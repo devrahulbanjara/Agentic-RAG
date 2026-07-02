@@ -1,3 +1,4 @@
+from loguru import logger
 from qdrant_client import QdrantClient, models
 
 from src.core.embeddings import BGEM3Embedder
@@ -37,6 +38,11 @@ class RetrievalService:
         limit: int,
         mmr_lambda: float | None,
     ) -> list[RetrievedChunk]:
+        logger.debug(
+            "retrieval | {} search queries x 3 lanes, top {} each",
+            len(search_queries),
+            RESULTS_PER_SEARCH,
+        )
         encoded = self.embedder.embed(search_queries)
 
         lanes: list[list[models.ScoredPoint]] = []
@@ -70,6 +76,12 @@ class RetrievalService:
             lanes.extend(response.points for response in responses)
 
         merged = self._merge_results(lanes, rerank_pool)
+        logger.debug(
+            "retrieval | fused {} lanes -> {} candidates (pool={})",
+            len(lanes),
+            len(merged),
+            rerank_pool,
+        )
         return self._rerank(anchor_query, merged, limit, mmr_lambda)
 
     def _merge_results(
@@ -100,14 +112,24 @@ class RetrievalService:
             order = mmr_select_diverse(scores, vectors, limit, mmr_lambda)
 
         order = [i for i in order if scores[i] >= MIN_RELEVANCE_SCORE]
+        kept = order[:limit]
+        logger.debug(
+            "rerank | {} candidates -> {} kept | floor={} mmr={}",
+            len(chunks),
+            len(kept),
+            MIN_RELEVANCE_SCORE,
+            "off" if mmr_lambda is None else mmr_lambda,
+        )
 
         return [
             RetrievedChunk(
                 text=chunks[i]["text"],
                 reranker_score=scores[i],
                 arxiv_id=chunks[i]["arxiv_id"],
+                chunk_type=chunks[i]["chunk_type"],
+                section_path=chunks[i].get("section_path") or [],
             )
-            for i in order[:limit]
+            for i in kept
         ]
 
     def _chunk_text(self, chunk: dict) -> str:

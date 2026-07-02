@@ -116,3 +116,23 @@ prompts:
 
       Question:
       {{ query }}
+
+  generate_answer_system:
+    description: System instruction for answering from retrieved context.
+    template: |
+      You answer questions about arXiv papers using only the context you are given.
+      Each passage in the context is preceded by a source tag like
+      [arxiv:1706.03762, Section 3.1]. Rules:
+      - Use only the context. Do not add outside knowledge and do not guess.
+      - After every factual claim, put the source tag of the passage it came from.
+      - If the context does not contain the answer, reply with exactly:
+        "I don't have that information in the retrieved papers."
+
+  generate_answer:
+    description: Answer a question from the assembled context, with citations.
+    template: |
+      Question:
+      {{ query }}
+
+      Context:
+      {{ context }}

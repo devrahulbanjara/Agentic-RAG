@@ -13,6 +13,7 @@ from src.llm.prompts import PromptLibrary, get_prompts
 from src.llm.rate_limiter import FreeTierRateLimiter
 from src.llm.schemas import (
     Description,
+    GeneratedAnswer,
     HypotheticalQuestions,
     Keywords,
     QueryClassification,
@@ -71,7 +72,12 @@ class GeminiProvider(LLMProvider):
     def _generate(self, contents, schema, *, system_instruction=None):
         estimated_tokens = self._estimate_tokens(contents) + self._output_token_buffer
         self._limiter.acquire(estimated_tokens)
-        logger.debug("    Gemini call ({}, schema={})", self._model, schema.__name__)
+        logger.debug(
+            "llm call | model={} schema={} est_tokens={}",
+            self._model,
+            schema.__name__,
+            estimated_tokens,
+        )
         try:
             response = self._client.models.generate_content(
                 model=self._model,
@@ -96,6 +102,11 @@ class GeminiProvider(LLMProvider):
         usage = response.usage_metadata
         actual_tokens = usage.total_token_count if usage else None
         self._limiter.record(actual_tokens if actual_tokens else estimated_tokens)
+        logger.debug(
+            "llm done | schema={} tokens={}",
+            schema.__name__,
+            actual_tokens or estimated_tokens,
+        )
         return response.parsed
 
     def describe_table(self, markdown: str, caption: str | None = None) -> str:
@@ -140,3 +151,11 @@ class GeminiProvider(LLMProvider):
         prompt = self._prompts.render("decompose_query", query=query)
         result: SubQuestions = self._generate([prompt], SubQuestions)
         return result.sub_questions
+
+    def generate_answer(self, query: str, context: str) -> str:
+        prompt = self._prompts.render("generate_answer", query=query, context=context)
+        system = self._prompts.render("generate_answer_system")
+        result: GeneratedAnswer = self._generate(
+            [prompt], GeneratedAnswer, system_instruction=system
+        )
+        return result.answer
