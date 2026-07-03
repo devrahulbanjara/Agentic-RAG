@@ -1,3 +1,4 @@
+from loguru import logger
 from qdrant_client import QdrantClient, models
 
 from src.core.embeddings import BGEM3Embedder
@@ -5,17 +6,11 @@ from src.core.reranker import BGEReranker
 from src.retrieval.mmr import mmr_select_diverse
 from src.retrieval.schemas import RetrievedChunk
 
-# How many results each of the three searches returns.
+# How many results each lane returns per query.
 RESULTS_PER_SEARCH = 50
 
 # RRF constant that keeps a single rank-1 hit from dominating the merge.
 RRF_K = 60
-
-# How many merged results we hand to the reranker.
-RESULTS_TO_RERANK = 30
-
-# How many chunks we return when the caller doesn't ask for a specific number.
-DEFAULT_LIMIT = 8
 
 # Drop the chunks finally that have the reranker score below this.
 MIN_RELEVANCE_SCORE = 0.5
@@ -35,46 +30,64 @@ class RetrievalService:
         self.collection_name = collection_name
 
     def retrieve(
-        self, query: str, limit: int = DEFAULT_LIMIT, mmr_lambda: float | None = None
+        self,
+        anchor_query: str,
+        search_queries: list[str],
+        *,
+        rerank_pool: int,
+        limit: int,
+        mmr_lambda: float | None,
     ) -> list[RetrievedChunk]:
-        encoded = self.embedder.embed([query])
-        dense_vector = encoded.dense[0]
-        sparse_vector = encoded.sparse[0]
-
-        responses = self.qdrant.query_batch_points(
-            collection_name=self.collection_name,
-            requests=[
-                models.QueryRequest(
-                    query=models.SparseVector(
-                        indices=sparse_vector.indices,
-                        values=sparse_vector.values,
-                    ),
-                    using="keywords_sparse",
-                    limit=RESULTS_PER_SEARCH,
-                    with_payload=True,
-                ),
-                models.QueryRequest(
-                    query=dense_vector,
-                    using="content",
-                    limit=RESULTS_PER_SEARCH,
-                    with_payload=True,
-                ),
-                models.QueryRequest(
-                    query=dense_vector,
-                    using="question",
-                    limit=RESULTS_PER_SEARCH,
-                    with_payload=True,
-                ),
-            ],
+        logger.debug(
+            "retrieval | {} search queries x 3 lanes, top {} each",
+            len(search_queries),
+            RESULTS_PER_SEARCH,
         )
+        encoded = self.embedder.embed(search_queries)
 
-        merged = self._merge_results([r.points for r in responses])
-        return self._rerank(query, merged, limit, mmr_lambda)
+        lanes: list[list[models.ScoredPoint]] = []
+        for dense_vector, sparse_vector in zip(encoded.dense, encoded.sparse):
+            responses = self.qdrant.query_batch_points(
+                collection_name=self.collection_name,
+                requests=[
+                    models.QueryRequest(
+                        query=models.SparseVector(
+                            indices=sparse_vector.indices,
+                            values=sparse_vector.values,
+                        ),
+                        using="keywords_sparse",
+                        limit=RESULTS_PER_SEARCH,
+                        with_payload=True,
+                    ),
+                    models.QueryRequest(
+                        query=dense_vector,
+                        using="content",
+                        limit=RESULTS_PER_SEARCH,
+                        with_payload=True,
+                    ),
+                    models.QueryRequest(
+                        query=dense_vector,
+                        using="question",
+                        limit=RESULTS_PER_SEARCH,
+                        with_payload=True,
+                    ),
+                ],
+            )
+            lanes.extend(response.points for response in responses)
+
+        merged = self._merge_results(lanes, rerank_pool)
+        logger.debug(
+            "retrieval | fused {} lanes -> {} candidates (pool={})",
+            len(lanes),
+            len(merged),
+            rerank_pool,
+        )
+        return self._rerank(anchor_query, merged, limit, mmr_lambda)
 
     def _merge_results(
-        self, search_results: list[list[models.ScoredPoint]]
+        self, search_results: list[list[models.ScoredPoint]], pool: int
     ) -> list[dict]:
-        """Merge the three searches with RRF, return the top chunk payloads."""
+        """Merge every lane with RRF, return the top `pool` chunk payloads."""
         scores: dict[str, float] = {}
         payloads: dict[str, dict] = {}
         for results in search_results:
@@ -83,7 +96,7 @@ class RetrievalService:
                 payloads.setdefault(point.id, point.payload)
 
         ranked_ids = sorted(scores, key=scores.get, reverse=True)
-        return [payloads[point_id] for point_id in ranked_ids[:RESULTS_TO_RERANK]]
+        return [payloads[point_id] for point_id in ranked_ids[:pool]]
 
     def _rerank(
         self, query: str, chunks: list[dict], limit: int, mmr_lambda: float | None
@@ -99,14 +112,24 @@ class RetrievalService:
             order = mmr_select_diverse(scores, vectors, limit, mmr_lambda)
 
         order = [i for i in order if scores[i] >= MIN_RELEVANCE_SCORE]
+        kept = order[:limit]
+        logger.debug(
+            "rerank | {} candidates -> {} kept | floor={} mmr={}",
+            len(chunks),
+            len(kept),
+            MIN_RELEVANCE_SCORE,
+            "off" if mmr_lambda is None else mmr_lambda,
+        )
 
         return [
             RetrievedChunk(
                 text=chunks[i]["text"],
                 reranker_score=scores[i],
                 arxiv_id=chunks[i]["arxiv_id"],
+                chunk_type=chunks[i]["chunk_type"],
+                section_path=chunks[i].get("section_path") or [],
             )
-            for i in order[:limit]
+            for i in kept
         ]
 
     def _chunk_text(self, chunk: dict) -> str:

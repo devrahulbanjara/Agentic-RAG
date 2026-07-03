@@ -240,11 +240,27 @@ This conditional behavior requires knowing the query type, which is what step 12
 
 ---
 
-### Step 12 — Reasoning engine (query classifier + router)
+### Step 12 — Reasoning engine (the inference front door)
 
-**What we have now:** The full retrieval pipeline (3 lanes, RRF, reranking, conditional MMR). But we're treating every query the same, or manually deciding which path to take. Some queries need keyword expansion, some need filter extraction, some need to be broken into sub-questions.
+**What we have now:** The full retrieval pipeline (3 lanes, RRF, reranking, conditional MMR). But it assumes every incoming message is a well-formed retrieval query and treats them all the same. A real chat assistant gets greetings, "what can you do?", follow-ups that only make sense given prior turns, questions the corpus can't answer, and prompt-injection attempts — none of which should be embedded and run through hybrid retrieval.
 
-**What we do:** Add a fast LLM call (Haiku 4.5 or local `llama-3.2-3b`) at the start that classifies the query into one of five categories, then route it to the right retrieval strategy:
+**Where the code stands today (what step 12 builds on):**
+
+- `RetrievalService.retrieve()` (`src/retrieval/service.py`) already *is* the SPECIFIC_FACTUAL recipe: three lanes (`keywords_sparse`, `content`, `question`, top 50 each) -> RRF (`k=60`) -> rerank top 30 -> top 8, with a `MIN_RELEVANCE_SCORE = 0.5` floor and optional MMR. `_merge_results` already takes a list of result-lists, so RAG Fusion reuses it as-is.
+- MMR (`src/retrieval/mmr.py`) works but is triggered manually — `mmr_lambda` is a request field on `/retrieve` (`router.py`, `schemas.py`). Step 12 is what makes it automatic per category.
+- The classifier and expansion calls follow the existing LLM pattern: extend `LLMProvider`/`GeminiProvider` with a method + a `prompts.yaml` entry + a Pydantic schema, exactly as `extract_keywords` / `generate_questions` already do. The free-tier rate limiter is already in place.
+- Built so far (step 12 in progress): the classification contract (`QueryIntent`, `QueryCategory`, `QueryClassification` in `src/llm/schemas.py`), the `classify_query` LLM call (`base.py`, `gemini.py`, `prompts.yaml`), and the recipe table (`RetrievalRecipe` + `RECIPES` + `GENERAL_RECIPE` in `src/retrieval/recipes.py`).
+- Still to build: the `RetrievalService` multi-query refactor, the `ReasoningEngine` that wires classify -> recipe -> retrieve, RAG Fusion, decomposition, the conversational/refusal handlers, and the API/UI wiring. No LangGraph — see below.
+
+**What we do:** Build the front door every user turn passes through. It is a **two-level decision**, not a single classifier.
+
+**Level 1 — intent gate.** One fast LLM call (Haiku 4.5 or local `llama-3.2-3b`) sorts the turn into one of three buckets:
+
+- **RETRIEVAL** — a real question about the papers. Continues to level 2.
+- **CONVERSATIONAL** — greeting, thanks, "what can you do?", "which papers do you have?". Answered conversationally, no retrieval.
+- **OUT_OF_SCOPE** — questions the corpus can't answer (general knowledge, made-up papers), or prompt-injection / info-evasion attempts. Refused at the door, before spending retrieval and generation tokens. This is the cheap first line of defense the step-17 stress suite targets; step 14's guardrails are the back-stop.
+
+**Level 2 — recipe routing (RETRIEVAL only).** Classify into one of five categories and route to the matching strategy:
 
 **SPECIFIC_FACTUAL** — "What BLEU did the Transformer get on WMT14 EN-DE?"
 - No query expansion. Run all 3 lanes. Rerank top 30 -> top 8. No MMR.
@@ -257,13 +273,27 @@ This conditional behavior requires knowing the query type, which is what step 12
 
 **METADATA_DRIVEN** — "Papers from 2023 about state space models."
 - Extract filters from the query: `submitted_at >= 2023-01-01`. Extract the semantic part: "state space models". Run hybrid retrieval with the Qdrant filter applied to all lanes.
+- **Prerequisite — not yet met.** The live collection (`arxiv_papers`) stores only `text, arxiv_id, chunk_type, section_path, description, image_path, hypothetical_questions, keywords` in the payload, with payload indexes on `arxiv_id` and `chunk_type` only. The filter fields this recipe needs — `submitted_at`, `primary_category`, `version`, `is_latest_version`, `authors` — are neither captured by the `Chunk` schema, ingested into the payload, nor indexed (paper-level metadata isn't fetched at all yet; step 8's claim of these indexes is aspirational). METADATA_DRIVEN therefore needs the `Chunk` schema + indexer payload + payload indexes extended and a re-index before it can work — or it ships after the others. The other four recipes have no such dependency.
 
 **EXPLORATORY** — "What approaches exist for long-context modeling?"
 - Same as CONCEPTUAL but with more diversity: RAG Fusion, rerank top 50 -> top 10, MMR with lambda=0.7.
 
-Implement as a LangGraph state machine. One node for classification, one node per expansion strategy, one node for retrieval, one for reranking, one for MMR.
+**Front-door extras for a real chat session:**
 
-**What we have after:** The system looks at each query and picks the right retrieval strategy automatically. A factual query gets precision. A conceptual query gets breadth. A comparative query gets decomposed. A metadata query gets filtered. This is where it starts feeling like an agent instead of a search box.
+- **Input guard.** A cheap screen for obvious abuse/injection ahead of the intent gate.
+- **Follow-up contextualization.** "What about the bigger model?" is meaningless on its own. When a session has history, rewrite the turn into a self-contained query (using the last few turns) *before* classifying. v1 may ship single-turn and add this later — but design the classifier to operate on the rewritten query so the retrofit is clean. Multi-turn session memory itself lives in the chat API (step 20).
+
+**How we build it.** A plain-Python router, not a framework. One classification call returns intent + category; a small `ReasoningEngine` resolves the recipe from the table, runs any expansion, and calls `RetrievalService`. The control flow is a branching DAG with no cycles, so a graph engine would be ceremony. LangGraph is deferred to Phase 5, where agentic loops (iterative retrieve-judge-retrieve) actually need it; the routing logic stays in small framework-agnostic functions so adopting it later is additive, not a rewrite.
+
+**Production behavior, built in from the start:**
+
+- **Graceful degradation.** A classifier or expansion LLM failure must never 500 the turn. Fall back to a **GENERAL recipe** (hybrid + rerank, no expansion, no MMR) and log it.
+- **Low confidence.** Same GENERAL fallback when the classifier isn't sure.
+- **Routing on/off switch.** A flag that forces the GENERAL recipe for every query, so step 16 can ablate routing on vs. off.
+- **Recipe config.** The per-category knobs (rerank pool, final count, MMR lambda) live as named constants in `recipes.py`. Externalize to env/config only when the step-16 ablation needs to sweep them — not before.
+- **Observability.** Capture per-node timing and the chosen category into state; this is the raw material for the step-15 latency and cost numbers.
+
+**What we have after:** Every turn is triaged before it costs anything — retrieval queries get the right strategy, chitchat gets a cheap conversational reply, and out-of-scope or adversarial inputs are refused at the door. A factual query gets precision, a conceptual query gets breadth, a comparative query gets decomposed, a metadata query gets filtered. The system stops being a search box wired to an LLM and starts behaving like an assistant.
 
 ---
 
@@ -298,6 +328,8 @@ Total context budget: 32k tokens. If we go over, drop neighbor chunks first (the
 - Cite every factual claim: `[arxiv:1706.03762, Section 6.1]` or `[arxiv:1706.03762, Table 2]`.
 - If the answer isn't in the context, say exactly: "I don't have that information in the retrieved papers."
 - Don't speculate. Don't use outside knowledge.
+
+This is the second layer of refusal: the step-12 intent gate refuses obvious out-of-scope and injection turns up front; this guardrail catches the harder case where retrieval ran but surfaced nothing that actually answers the question.
 
 **Guardrail 1: Citation validator.** After the LLM responds, a regex finds every citation like `[arxiv:1706.03762, Table 2]`. For each one, check: did we actually retrieve a chunk from paper 1706.03762 that corresponds to Table 2? If any citation points to something we didn't retrieve, it's fabricated. Regenerate with an addendum: "Your previous answer cited [arxiv:X, Y] which was not in the retrieved context. Re-answer using only retrieved sources."
 
@@ -439,6 +471,7 @@ Run ingestion through a proper pipeline. `asyncio` with a task queue is enough t
 **What we do:** Put a thin API layer and a minimal UI on top:
 
 - FastAPI service with two endpoints: one streaming endpoint for chat, one structured endpoint for COMPARATIVE queries that returns JSON.
+- Multi-turn session memory: the chat endpoint keeps per-session history and feeds it to the step-12 follow-up contextualization so "what about the bigger model?" resolves against earlier turns. This is what makes it a chatbot rather than a stateless query box.
 - Minimal frontend (Next.js or plain HTML) that shows: the answer with inline citation links, and a side panel listing the retrieved chunks so the user can see what the model read.
 - README that lets someone clone the repo, run `docker compose up`, ingest one paper, and ask a question in under 15 minutes.
 

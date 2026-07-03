@@ -160,6 +160,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Local LLM quota state
+data/.gemini_quota.json
+
 # Spyder project settings
 .spyderproject
 .spyproject

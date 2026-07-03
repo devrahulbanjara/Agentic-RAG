@@ -2,11 +2,11 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
-from src.retrieval.service import RetrievalService
+from src.retrieval.reasoning import ReasoningEngine
 
 
-def get_retrieval_service(request: Request) -> RetrievalService:
-    return request.app.state.retrieval_service
+def get_reasoning_engine(request: Request) -> ReasoningEngine:
+    return request.app.state.reasoning_engine
 
 
-RetrievalServiceDep = Annotated[RetrievalService, Depends(get_retrieval_service)]
+ReasoningEngineDep = Annotated[ReasoningEngine, Depends(get_reasoning_engine)]

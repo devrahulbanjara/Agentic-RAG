@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+from src.llm.schemas import QueryClassification
+
 
 class LLMError(Exception):
     """Base class for provider-agnostic LLM errors."""
@@ -50,3 +52,19 @@ class LLMProvider(ABC):
     @abstractmethod
     def generate_questions(self, text: str) -> list[str]:
         """Return 3 hypothetical questions the chunk answers."""
+
+    @abstractmethod
+    def classify_query(self, query: str) -> QueryClassification:
+        """Classify a user turn into an intent and retrieval category for routing."""
+
+    @abstractmethod
+    def expand_query(self, query: str, count: int) -> list[str]:
+        """Return `count` alternative phrasings of the query for RAG Fusion."""
+
+    @abstractmethod
+    def decompose_query(self, query: str) -> list[str]:
+        """Return standalone sub-questions a comparative query decomposes into."""
+
+    @abstractmethod
+    def generate_answer(self, query: str, context: str) -> str:
+        """Answer the query using only the given context, citing each claim."""
