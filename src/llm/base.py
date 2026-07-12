@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from src.llm.schemas import QueryClassification
+from src.llm.schemas import MetadataQuery, QueryClassification
 
 
 class LLMError(Exception):
@@ -64,6 +64,10 @@ class LLMProvider(ABC):
     @abstractmethod
     def decompose_query(self, query: str) -> list[str]:
         """Return standalone sub-questions a comparative query decomposes into."""
+
+    @abstractmethod
+    def extract_metadata_query(self, query: str) -> MetadataQuery:
+        """Extract metadata filters and the semantic part of the query."""
 
     @abstractmethod
     def generate_answer(self, query: str, context: str) -> str:

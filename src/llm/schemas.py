@@ -87,3 +87,29 @@ class SubQuestions(BaseModel):
         min_length=2,
         max_length=4,
     )
+
+
+class MetadataQuery(BaseModel):
+    semantic_query: str = Field(
+        description="The topic/content part of the query after removing metadata constraints. Empty if none remains."
+    )
+    primary_category: str | None = Field(
+        default=None,
+        description="Explicit primary arXiv category filter, e.g. cs.CL, cs.LG, cs.CV.",
+    )
+    author_names: list[str] = Field(
+        default_factory=list,
+        description="Author names explicitly requested in the query.",
+    )
+    year_from: int | None = Field(
+        default=None,
+        description="Inclusive lower bound on submitted year.",
+    )
+    year_to: int | None = Field(
+        default=None,
+        description="Inclusive upper bound on submitted year.",
+    )
+    latest_only: bool = Field(
+        default=True,
+        description="Keep only latest versions unless the user explicitly asks otherwise.",
+    )

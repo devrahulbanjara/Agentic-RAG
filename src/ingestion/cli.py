@@ -8,15 +8,18 @@ Usage:
 import argparse
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from src.core.config import settings
-from src.ingestion.docling_parser import DoclingParser
 from src.ingestion.indexer import QdrantIndexer
 from src.ingestion.service import IngestionService
 from src.llm import get_llm_provider
 from src.llm.base import LLMDailyQuotaError
+
+if TYPE_CHECKING:
+    from src.ingestion.docling_parser import DoclingParser
 
 _LOG_FORMAT = (
     "<green>{time:HH:mm:ss}</green> | "
@@ -41,18 +44,33 @@ def _collect_pdfs(args: argparse.Namespace) -> list[Path]:
     paths: list[Path] = []
 
     if args.batch_dir:
-        found = sorted(args.batch_dir.glob("*.pdf"))
+        batch_dir = args.batch_dir.expanduser().resolve()
+        if not batch_dir.exists():
+            logger.error("Directory not found: {}", batch_dir)
+            sys.exit(1)
+        if not batch_dir.is_dir():
+            logger.error("Batch path is not a directory: {}", batch_dir)
+            sys.exit(1)
+
+        found = sorted(path.resolve(strict=False) for path in batch_dir.glob("*.pdf"))
         if not found:
-            logger.error("No PDFs found in {}", args.batch_dir)
+            logger.error("No PDFs found in {}", batch_dir)
             sys.exit(1)
         paths.extend(found)
 
     if args.input:
-        for p in args.input:
-            if not p.exists():
-                logger.warning("File not found, skipping: {}", p)
+        for path in args.input:
+            path = path.expanduser().resolve()
+            if not path.exists():
+                logger.warning("File not found, skipping: {}", path)
                 continue
-            paths.append(p)
+            if not path.is_file():
+                logger.warning("Path is not a file, skipping: {}", path)
+                continue
+            if path.suffix.lower() != ".pdf":
+                logger.warning("File is not a PDF, skipping: {}", path)
+                continue
+            paths.append(path)
 
     return paths
 
@@ -81,6 +99,15 @@ def main(argv: list[str] | None = None) -> None:
     pdf_paths = _collect_pdfs(args)
     if not pdf_paths:
         logger.error("No valid PDF files to process")
+        sys.exit(1)
+
+    try:
+        from src.ingestion.docling_parser import DoclingParser
+    except OSError as error:
+        logger.error(
+            "Failed to load Docling dependencies: {}. On Windows this usually means the Microsoft Visual C++ Redistributable is missing.",
+            error,
+        )
         sys.exit(1)
 
     document_parser = DoclingParser(settings.docling)

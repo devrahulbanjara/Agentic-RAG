@@ -40,6 +40,21 @@ class QdrantIndexer:
         self._client.create_payload_index(
             self._collection, "chunk_type", models.PayloadSchemaType.KEYWORD
         )
+        self._client.create_payload_index(
+            self._collection, "primary_category", models.PayloadSchemaType.KEYWORD
+        )
+        self._client.create_payload_index(
+            self._collection, "version", models.PayloadSchemaType.KEYWORD
+        )
+        self._client.create_payload_index(
+            self._collection, "is_latest_version", models.PayloadSchemaType.BOOL
+        )
+        self._client.create_payload_index(
+            self._collection, "submitted_year", models.PayloadSchemaType.INTEGER
+        )
+        self._client.create_payload_index(
+            self._collection, "authors", models.PayloadSchemaType.KEYWORD
+        )
         logger.info("Created collection '{}'", self._collection)
 
     def index(self, chunks: list[Chunk]) -> int:
@@ -66,7 +81,12 @@ class QdrantIndexer:
         for chunk, content_vector, question_vector, keyword_vector in zip(
             chunks, content_vectors, question_vectors, keyword_vectors
         ):
-            point_id = str(uuid5(NAMESPACE_URL, f"{chunk.arxiv_id}:{chunk.text[:200]}"))
+            point_id = str(
+                uuid5(
+                    NAMESPACE_URL,
+                    f"{chunk.arxiv_id}:{chunk.version}:{chunk.text[:200]}",
+                )
+            )
             point = PointStruct(
                 id=point_id,
                 payload={
@@ -74,6 +94,15 @@ class QdrantIndexer:
                     "arxiv_id": chunk.arxiv_id,
                     "chunk_type": chunk.chunk_type,
                     "section_path": chunk.section_path,
+                    "title": chunk.title,
+                    "authors": chunk.authors,
+                    "primary_category": chunk.primary_category,
+                    "categories": chunk.categories,
+                    "version": chunk.version,
+                    "submitted_at": chunk.submitted_at,
+                    "submitted_year": chunk.submitted_year,
+                    "doi": chunk.doi,
+                    "is_latest_version": chunk.is_latest_version,
                     "description": chunk.description,
                     "image_path": chunk.image_path,
                     "hypothetical_questions": chunk.hypothetical_questions,

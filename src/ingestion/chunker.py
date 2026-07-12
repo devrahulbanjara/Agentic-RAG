@@ -45,6 +45,20 @@ def chunk_document(document: ParsedDocument, config: ChunkingSettings) -> list[C
     """
     chunks: list[Chunk] = []
 
+    def chunk_kwargs() -> dict:
+        metadata = document.metadata
+        return {
+            "version": metadata.version,
+            "title": metadata.title,
+            "authors": metadata.authors,
+            "primary_category": metadata.primary_category,
+            "categories": metadata.categories,
+            "submitted_at": metadata.submitted_at,
+            "submitted_year": metadata.submitted_year,
+            "doi": metadata.doi,
+            "is_latest_version": metadata.is_latest_version,
+        }
+
     def make_paragraph_chunk(
         text: str, arxiv_id: str, section_path: list[str], section_label: str
     ) -> Chunk:
@@ -64,6 +78,7 @@ def chunk_document(document: ParsedDocument, config: ChunkingSettings) -> list[C
             arxiv_id=arxiv_id,
             chunk_type="paragraph",
             section_path=section_path,
+            **chunk_kwargs(),
         )
 
     def save_collected_paragraphs(
@@ -148,6 +163,7 @@ def chunk_document(document: ParsedDocument, config: ChunkingSettings) -> list[C
                             arxiv_id=document.arxiv_id,
                             chunk_type="table",
                             section_path=section_path,
+                            **chunk_kwargs(),
                         )
                     )
 
@@ -171,6 +187,7 @@ def chunk_document(document: ParsedDocument, config: ChunkingSettings) -> list[C
                             chunk_type="figure",
                             section_path=section_path,
                             image_path=item.image_path,
+                            **chunk_kwargs(),
                         )
                     )
 
@@ -189,6 +206,7 @@ def chunk_document(document: ParsedDocument, config: ChunkingSettings) -> list[C
                             arxiv_id=document.arxiv_id,
                             chunk_type="equation",
                             section_path=section_path,
+                            **chunk_kwargs(),
                         )
                     )
 

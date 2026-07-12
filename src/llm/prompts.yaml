@@ -117,6 +117,26 @@ prompts:
       Question:
       {{ query }}
 
+  extract_metadata_query:
+    description: Extract structured metadata filters from a metadata-driven query.
+    template: |
+      Extract metadata filters from this query over arXiv papers.
+
+      Allowed primary categories:
+      - cs.CL
+      - cs.LG
+      - cs.CV
+
+      Rules:
+      - `semantic_query` is the topic/content phrase left after removing metadata constraints.
+      - Only set `primary_category` when the user explicitly asks for one.
+      - Put explicitly named authors into `author_names`.
+      - Use `year_from` / `year_to` only when the query implies a year or year range.
+      - Keep `latest_only=true` unless the user explicitly asks for a non-latest version or all versions.
+
+      Query:
+      {{ query }}
+
   generate_answer_system:
     description: System instruction for answering from retrieved context.
     template: |
@@ -126,7 +146,7 @@ prompts:
       - Use only the context. Do not add outside knowledge and do not guess.
       - After every factual claim, put the source tag of the passage it came from.
       - If the context does not contain the answer, reply with exactly:
-        "I don't have that information in the retrieved papers."
+        "{{ no_evidence_reply }}"
 
   generate_answer:
     description: Answer a question from the assembled context, with citations.

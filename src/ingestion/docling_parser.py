@@ -10,6 +10,7 @@ from docling.document_converter import DocumentConverter, PdfFormatOption
 from loguru import logger
 
 from src.core.config import DoclingSettings
+from src.ingestion.arxiv_metadata import build_fallback_metadata, fetch_paper_metadata
 from src.ingestion.docling_parser_helpers import build_tree
 from src.ingestion.schemas import ParsedDocument
 
@@ -35,11 +36,28 @@ class DoclingParser:
 
     def parse(self, pdf_path: Path) -> ParsedDocument:
         """Parse a single PDF into a structured document."""
-        arxiv_id = pdf_path.stem
+        raw_arxiv_id = pdf_path.stem
+        metadata = None
+        try:
+            metadata = fetch_paper_metadata(raw_arxiv_id)
+            logger.debug(
+                "Loaded arXiv metadata {} {}",
+                metadata.arxiv_id,
+                metadata.version,
+            )
+        except Exception as error:
+            logger.warning(
+                "Could not load arXiv metadata for {}: {}. Continuing with filename-derived metadata.",
+                raw_arxiv_id,
+                error,
+            )
+
+        arxiv_id = metadata.arxiv_id if metadata else raw_arxiv_id
         logger.debug("Parsing {} with Docling", arxiv_id)
 
         logger.debug("  Docling: converting PDF (this is the slowest stage)")
         result = self._converter.convert(str(pdf_path))
+        metadata = metadata or build_fallback_metadata(raw_arxiv_id, result.document.name)
         logger.debug("  Docling: conversion done, building section tree")
         sections, _ = build_tree(
             result.document,
@@ -50,7 +68,8 @@ class DoclingParser:
 
         return ParsedDocument(
             arxiv_id=arxiv_id,
-            title=result.document.name,
+            title=metadata.title or result.document.name,
+            metadata=metadata,
             sections=sections,
             references=[],
         )
