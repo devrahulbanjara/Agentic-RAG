@@ -1,11 +1,19 @@
 from time import perf_counter
+from typing import NamedTuple
 
 from loguru import logger
 
 from src.core.config import ReasoningSettings
+from src.generation.messages import (
+    CONVERSATIONAL_REPLY,
+    GENERATION_FAILED_REPLY,
+    NO_EVIDENCE_REPLY,
+    OUT_OF_SCOPE_REPLY,
+)
 from src.generation.service import AnswerGenerator
 from src.llm.base import LLMError, LLMProvider
 from src.llm.schemas import QueryCategory, QueryClassification, QueryIntent
+from src.retrieval.metadata_filters import build_qdrant_filter
 from src.retrieval.schemas import RetrievedChunk, RoutedRetrievalResponse
 from src.retrieval.service import RetrievalService
 from src.retrieval.strategies import (
@@ -14,19 +22,9 @@ from src.retrieval.strategies import (
     RetrievalStrategy,
 )
 
-CONVERSATIONAL_REPLY = (
-    "I'm a research assistant for the indexed arXiv papers. Ask me about their "
-    "methods, results, or how they compare."
-)
-REFUSAL_REPLY = (
-    "I can only answer questions grounded in the indexed arXiv papers, and I "
-    "don't have that here."
-)
-NO_EVIDENCE_REPLY = "I don't have that information in the retrieved papers."
-GENERATION_FAILED_REPLY = (
-    "I couldn't write an answer just now. The most relevant passages I found are "
-    "listed below."
-)
+class MetadataPlan(NamedTuple):
+    semantic_query: str
+    filters: object | None
 
 
 class ReasoningEngine:
@@ -55,7 +53,7 @@ class ReasoningEngine:
         if classification.intent is QueryIntent.CONVERSATIONAL:
             return self._reply(query, classification.intent, CONVERSATIONAL_REPLY)
         if classification.intent is QueryIntent.OUT_OF_SCOPE:
-            return self._reply(query, classification.intent, REFUSAL_REPLY)
+            return self._reply(query, classification.intent, OUT_OF_SCOPE_REPLY)
 
         strategy, category = self._resolve_strategy(classification)
         return self._run_retrieval(query, category, strategy)
@@ -92,7 +90,9 @@ class ReasoningEngine:
         strategy: RetrievalStrategy,
     ) -> RoutedRetrievalResponse:
         started = perf_counter()
-        search_queries = self._build_search_queries(query, strategy)
+        metadata_plan = self._metadata_plan(query, category)
+        semantic_query = metadata_plan.semantic_query if metadata_plan else query
+        search_queries = self._build_search_queries(semantic_query, strategy)
         logger.debug(
             "search queries | expansion={} count={} {}",
             strategy.expansion,
@@ -102,6 +102,7 @@ class ReasoningEngine:
         chunks = self._retrieval.retrieve(
             query,
             search_queries,
+            filters=metadata_plan.filters if metadata_plan else None,
             rerank_pool=strategy.rerank_pool,
             limit=strategy.final_limit,
             mmr_lambda=strategy.mmr_lambda,
@@ -156,6 +157,27 @@ class ReasoningEngine:
             logger.exception("Query decomposition failed; using original query only")
             return [query]
         return sub_questions or [query]
+
+    def _metadata_plan(
+        self, query: str, category: QueryCategory | None
+    ) -> MetadataPlan | None:
+        if category is not QueryCategory.METADATA_DRIVEN:
+            return None
+
+        try:
+            metadata_query = self._classifier.extract_metadata_query(query)
+        except LLMError:
+            logger.exception(
+                "Metadata filter extraction failed; using unfiltered retrieval"
+            )
+            return None
+
+        logger.debug("metadata filters | {}", metadata_query.model_dump())
+        semantic_query = metadata_query.semantic_query.strip() or query
+        return MetadataPlan(
+            semantic_query=semantic_query,
+            filters=build_qdrant_filter(metadata_query),
+        )
 
     def _reply(
         self, query: str, intent: QueryIntent, message: str

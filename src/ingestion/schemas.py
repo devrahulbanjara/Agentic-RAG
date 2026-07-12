@@ -3,6 +3,19 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+class PaperMetadata(BaseModel):
+    arxiv_id: str
+    version: str
+    title: str
+    authors: list[str]
+    primary_category: str | None = None
+    categories: list[str] = []
+    submitted_at: str | None = None
+    submitted_year: int | None = None
+    doi: str | None = None
+    is_latest_version: bool = True
+
+
 class Reference(BaseModel):
     ref_id: str
     authors: list[str]
@@ -32,6 +45,7 @@ class Section(BaseModel):
 class ParsedDocument(BaseModel):
     arxiv_id: str
     title: str
+    metadata: PaperMetadata
     sections: list[Section]
     references: list[Reference]
 
@@ -45,3 +59,12 @@ class Chunk(BaseModel):
     description: str | None = None
     hypothetical_questions: list[str] = []
     keywords: list[str] = []
+    version: str
+    title: str
+    authors: list[str] = []
+    primary_category: str | None = None
+    categories: list[str] = []
+    submitted_at: str | None = None
+    submitted_year: int | None = None
+    doi: str | None = None
+    is_latest_version: bool = True

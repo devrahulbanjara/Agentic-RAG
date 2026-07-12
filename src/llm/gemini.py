@@ -8,6 +8,7 @@ from loguru import logger
 from PIL import Image
 
 from src.core.config import settings
+from src.generation.messages import NO_EVIDENCE_REPLY
 from src.llm.base import LLMError, LLMProvider, LLMRateLimitError
 from src.llm.prompts import PromptLibrary, get_prompts
 from src.llm.rate_limiter import FreeTierRateLimiter
@@ -16,6 +17,7 @@ from src.llm.schemas import (
     GeneratedAnswer,
     HypotheticalQuestions,
     Keywords,
+    MetadataQuery,
     QueryClassification,
     QueryVariations,
     SubQuestions,
@@ -152,9 +154,16 @@ class GeminiProvider(LLMProvider):
         result: SubQuestions = self._generate([prompt], SubQuestions)
         return result.sub_questions
 
+    def extract_metadata_query(self, query: str) -> MetadataQuery:
+        prompt = self._prompts.render("extract_metadata_query", query=query)
+        return self._generate([prompt], MetadataQuery)
+
     def generate_answer(self, query: str, context: str) -> str:
         prompt = self._prompts.render("generate_answer", query=query, context=context)
-        system = self._prompts.render("generate_answer_system")
+        system = self._prompts.render(
+            "generate_answer_system",
+            no_evidence_reply=NO_EVIDENCE_REPLY,
+        )
         result: GeneratedAnswer = self._generate(
             [prompt], GeneratedAnswer, system_instruction=system
         )

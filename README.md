@@ -20,3 +20,6 @@ uv run python -m src.ingestion.cli -b data/
 ```
 
 Running ingestion the first time will take a bit more time than subsequent runs even for the same data, as docling will download its model for the first time.
+
+On Windows, if ingestion fails with a `torch` / `c10.dll` load error, install the Microsoft Visual C++ Redistributable:
+https://aka.ms/vs/17/release/vc_redist.x64.exe
