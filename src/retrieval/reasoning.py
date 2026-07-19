@@ -22,6 +22,7 @@ from src.retrieval.strategies import (
     RetrievalStrategy,
 )
 
+
 class MetadataPlan(NamedTuple):
     semantic_query: str
     filters: object | None

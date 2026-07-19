@@ -2,6 +2,7 @@
 
 Usage:
     uv run python -m src.ingestion.cli -i data/a.pdf data/b.pdf
+    uv run python -m src.ingestion.cli -v -i data/a.pdf data/b.pdf  (for verbose mode)
     uv run python -m src.ingestion.cli -b data/
 """
 
@@ -19,7 +20,7 @@ from src.llm import get_llm_provider
 from src.llm.base import LLMDailyQuotaError
 
 if TYPE_CHECKING:
-    from src.ingestion.docling_parser import DoclingParser
+    pass
 
 _LOG_FORMAT = (
     "<green>{time:HH:mm:ss}</green> | "

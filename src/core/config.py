@@ -34,6 +34,7 @@ class PostgresSettings(BaseSettings):
 class QdrantSettings(BaseSettings):
     model_config = _ENV
     url: str = Field(alias="QDRANT_URL")
+    api_key: str | None = Field(default=None, alias="QDRANT_API_KEY")
     collection: str = Field(default="arxiv_papers", alias="QDRANT_COLLECTION")
     embedding_model: str = "BAAI/bge-m3"
     embedding_dim: int = 1024

@@ -11,7 +11,7 @@ from src.ingestion.schemas import Chunk
 
 class QdrantIndexer:
     def __init__(self, config: QdrantSettings) -> None:
-        self._client = QdrantClient(url=config.url)
+        self._client = QdrantClient(url=config.url, api_key=config.api_key or None)
         self._collection = config.collection
         self._embedding_dim = config.embedding_dim
         self._embedder = BGEM3Embedder(config.embedding_model)

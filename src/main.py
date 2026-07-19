@@ -16,7 +16,7 @@ from src.retrieval.service import RetrievalService
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    qdrant = QdrantClient(url=settings.qdrant.url)
+    qdrant = QdrantClient(url=settings.qdrant.url, api_key=settings.qdrant.api_key or None)
     retrieval = RetrievalService(
         qdrant=qdrant,
         embedder=BGEM3Embedder(settings.qdrant.embedding_model),
