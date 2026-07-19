@@ -3,7 +3,6 @@ from uuid import NAMESPACE_URL, uuid5
 from loguru import logger
 from qdrant_client import QdrantClient, models
 from qdrant_client.models import PointStruct
-
 from src.core.config import QdrantSettings
 from src.core.embeddings import BGEM3Embedder
 from src.ingestion.schemas import Chunk
@@ -75,6 +74,12 @@ class QdrantIndexer:
             "  Indexer: encoding {} chunks (BGE-M3 sparse over keywords)", len(chunks)
         )
         keyword_vectors = self._embedder.embed(keyword_texts, return_dense=False).sparse
+        if (
+            content_vectors is None
+            or question_vectors is None
+            or keyword_vectors is None
+        ):
+            raise RuntimeError("Expected dense and sparse embeddings for indexing")
         logger.debug("  Indexer: building point payloads")
 
         points = []

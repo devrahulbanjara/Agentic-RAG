@@ -3,7 +3,6 @@ from xml.etree import ElementTree as ET
 
 import httpx
 from loguru import logger
-
 from src.ingestion.schemas import Reference
 
 TEI_NS = "{http://www.tei-c.org/ns/1.0}"

@@ -1,6 +1,5 @@
 from loguru import logger
 from qdrant_client import QdrantClient, models
-
 from src.core.embeddings import BGEM3Embedder
 from src.core.reranker import BGEReranker
 from src.retrieval.mmr import mmr_select_diverse
@@ -45,6 +44,8 @@ class RetrievalService:
             RESULTS_PER_SEARCH,
         )
         encoded = self.embedder.embed(search_queries)
+        if encoded.dense is None or encoded.sparse is None:
+            raise RuntimeError("Expected dense and sparse embeddings for retrieval")
 
         lanes: list[list[models.ScoredPoint]] = []
         for dense_vector, sparse_vector in zip(encoded.dense, encoded.sparse):
@@ -57,21 +58,21 @@ class RetrievalService:
                             values=sparse_vector.values,
                         ),
                         using="keywords_sparse",
-                        query_filter=filters,
+                        filter=filters,
                         limit=RESULTS_PER_SEARCH,
                         with_payload=True,
                     ),
                     models.QueryRequest(
                         query=dense_vector,
                         using="content",
-                        query_filter=filters,
+                        filter=filters,
                         limit=RESULTS_PER_SEARCH,
                         with_payload=True,
                     ),
                     models.QueryRequest(
                         query=dense_vector,
                         using="question",
-                        query_filter=filters,
+                        filter=filters,
                         limit=RESULTS_PER_SEARCH,
                         with_payload=True,
                     ),
@@ -96,10 +97,11 @@ class RetrievalService:
         payloads: dict[str, dict] = {}
         for results in search_results:
             for rank, point in enumerate(results, start=1):
-                scores[point.id] = scores.get(point.id, 0.0) + 1.0 / (RRF_K + rank)
-                payloads.setdefault(point.id, point.payload)
+                point_id = str(point.id)
+                scores[point_id] = scores.get(point_id, 0.0) + 1.0 / (RRF_K + rank)
+                payloads.setdefault(point_id, point.payload or {})
 
-        ranked_ids = sorted(scores, key=scores.get, reverse=True)
+        ranked_ids = sorted(scores, key=lambda point_id: scores[point_id], reverse=True)
         return [payloads[point_id] for point_id in ranked_ids[:pool]]
 
     def _rerank(
@@ -113,6 +115,8 @@ class RetrievalService:
             order = sorted(range(len(chunks)), key=lambda i: scores[i], reverse=True)
         else:
             vectors = self.embedder.embed(texts, return_sparse=False).dense
+            if vectors is None:
+                raise RuntimeError("Expected dense embeddings for MMR reranking")
             order = mmr_select_diverse(scores, vectors, limit, mmr_lambda)
 
         order = [i for i in order if scores[i] >= MIN_RELEVANCE_SCORE]

@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from loguru import logger
-
 from src.ingestion.schemas import Chunk
 from src.llm.base import (
     LLMDailyQuotaError,
@@ -23,11 +22,11 @@ def _extract_table_markdown(chunk_text: str) -> str:
     lines = chunk_text.splitlines()
     body_start = 0
     for index, line in enumerate(lines):
-        if line.startswith("[Paper:"):
-            body_start = index + 1
-        elif line.startswith("Caption:"):
-            body_start = index + 1
-        elif line.strip() == "":
+        if (
+            line.startswith("[Paper:")
+            or line.startswith("Caption:")
+            or line.strip() == ""
+        ):
             body_start = index + 1
         else:
             break

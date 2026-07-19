@@ -8,7 +8,6 @@ from docling.datamodel.pipeline_options import (
 )
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from loguru import logger
-
 from src.core.config import DoclingSettings
 from src.ingestion.arxiv_metadata import (
     build_fallback_metadata,

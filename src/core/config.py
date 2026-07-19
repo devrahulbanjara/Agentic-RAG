@@ -111,13 +111,19 @@ class Settings(BaseSettings):
     model_config = _ENV
 
     app: AppSettings = Field(default_factory=AppSettings)
-    postgres: PostgresSettings = Field(default_factory=PostgresSettings)
-    qdrant: QdrantSettings = Field(default_factory=QdrantSettings)
+    postgres: PostgresSettings = Field(
+        default_factory=lambda: PostgresSettings()  # type: ignore[call-arg]
+    )
+    qdrant: QdrantSettings = Field(
+        default_factory=lambda: QdrantSettings()  # type: ignore[call-arg]
+    )
     reranker: RerankerSettings = Field(default_factory=RerankerSettings)
     docling: DoclingSettings = Field(default_factory=DoclingSettings)
     grobid: GrobidSettings = Field(default_factory=GrobidSettings)
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
-    llm: LLMSettings = Field(default_factory=LLMSettings)
+    llm: LLMSettings = Field(
+        default_factory=lambda: LLMSettings()  # type: ignore[call-arg]
+    )
     reasoning: ReasoningSettings = Field(default_factory=ReasoningSettings)
 
 

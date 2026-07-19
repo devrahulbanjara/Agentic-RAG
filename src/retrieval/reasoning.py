@@ -2,7 +2,7 @@ from time import perf_counter
 from typing import NamedTuple
 
 from loguru import logger
-
+from qdrant_client import models
 from src.core.config import ReasoningSettings
 from src.generation.messages import (
     CONVERSATIONAL_REPLY,
@@ -25,7 +25,7 @@ from src.retrieval.strategies import (
 
 class MetadataPlan(NamedTuple):
     semantic_query: str
-    filters: object | None
+    filters: models.Filter | None
 
 
 class ReasoningEngine:

@@ -13,7 +13,6 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from loguru import logger
-
 from src.llm.base import LLMDailyQuotaError
 
 _WINDOW_SECONDS = 60.0

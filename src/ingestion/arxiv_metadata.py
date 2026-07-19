@@ -1,10 +1,9 @@
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
-import re
 from xml.etree import ElementTree
 
 import requests
-
 from src.ingestion.schemas import PaperMetadata
 
 ARXIV_API_URL = "http://export.arxiv.org/api/query"

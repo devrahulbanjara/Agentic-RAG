@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from loguru import logger
-
 from src.core.config import ChunkingSettings, GrobidSettings
 from src.ingestion.chunker import chunk_document
 from src.ingestion.docling_parser import DoclingParser

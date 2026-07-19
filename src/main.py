@@ -3,7 +3,6 @@ from contextlib import asynccontextmanager
 import gradio as gr
 from fastapi import FastAPI
 from qdrant_client import QdrantClient
-
 from src.core.config import settings
 from src.core.embeddings import BGEM3Embedder
 from src.core.reranker import BGEReranker
@@ -16,7 +15,9 @@ from src.retrieval.service import RetrievalService
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    qdrant = QdrantClient(url=settings.qdrant.url, api_key=settings.qdrant.api_key or None)
+    qdrant = QdrantClient(
+        url=settings.qdrant.url, api_key=settings.qdrant.api_key or None
+    )
     retrieval = RetrievalService(
         qdrant=qdrant,
         embedder=BGEM3Embedder(settings.qdrant.embedding_model),

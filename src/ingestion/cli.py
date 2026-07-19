@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
-
 from src.core.config import settings
 from src.ingestion.indexer import QdrantIndexer
 from src.ingestion.service import IngestionService
