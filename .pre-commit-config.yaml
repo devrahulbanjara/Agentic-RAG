@@ -1,0 +1,58 @@
+default_language_version:
+  python: python3.14
+default_install_hook_types: [pre-commit, pre-push]
+
+repos:
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.11.29
+    hooks:
+      - id: uv-lock
+        stages: [pre-commit, pre-push]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        stages: [pre-commit]
+      - id: end-of-file-fixer
+        stages: [pre-commit]
+      - id: check-yaml
+        stages: [pre-commit, pre-push]
+      - id: check-toml
+        stages: [pre-commit, pre-push]
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+        stages: [pre-commit]
+      - id: debug-statements
+        stages: [pre-commit, pre-push]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.22
+    hooks:
+      - id: ruff-check
+        name: ruff check --fix
+        args: [--fix]
+        types_or: [python, pyi]
+        stages: [pre-commit]
+      - id: ruff-format
+        types_or: [python, pyi]
+        stages: [pre-commit]
+      - id: ruff-check
+        name: ruff check
+        types_or: [python, pyi]
+        stages: [pre-push]
+      - id: ruff-format
+        name: ruff format --check
+        args: [--check]
+        types_or: [python, pyi]
+        stages: [pre-push]
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: uv run --locked mypy
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

@@ -1,7 +1,6 @@
 from typing import Annotated
 
 from pydantic import BaseModel, Field
-
 from src.llm.schemas import QueryCategory, QueryIntent
 
 QueryStr = Annotated[str, Field(min_length=1, max_length=500)]

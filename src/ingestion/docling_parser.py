@@ -8,9 +8,12 @@ from docling.datamodel.pipeline_options import (
 )
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from loguru import logger
-
 from src.core.config import DoclingSettings
-from src.ingestion.arxiv_metadata import build_fallback_metadata, fetch_paper_metadata
+from src.ingestion.arxiv_metadata import (
+    build_fallback_metadata,
+    fetch_paper_metadata,
+    looks_like_arxiv_id,
+)
 from src.ingestion.docling_parser_helpers import build_tree
 from src.ingestion.schemas import ParsedDocument
 
@@ -38,18 +41,24 @@ class DoclingParser:
         """Parse a single PDF into a structured document."""
         raw_arxiv_id = pdf_path.stem
         metadata = None
-        try:
-            metadata = fetch_paper_metadata(raw_arxiv_id)
+        if looks_like_arxiv_id(raw_arxiv_id):
+            try:
+                metadata = fetch_paper_metadata(raw_arxiv_id)
+                logger.debug(
+                    "Loaded arXiv metadata {} {}",
+                    metadata.arxiv_id,
+                    metadata.version,
+                )
+            except Exception as error:
+                logger.warning(
+                    "Could not load arXiv metadata for {}: {}. Continuing with filename-derived metadata.",
+                    raw_arxiv_id,
+                    error,
+                )
+        else:
             logger.debug(
-                "Loaded arXiv metadata {} {}",
-                metadata.arxiv_id,
-                metadata.version,
-            )
-        except Exception as error:
-            logger.warning(
-                "Could not load arXiv metadata for {}: {}. Continuing with filename-derived metadata.",
+                "Skipping arXiv metadata lookup for non-arXiv filename {}",
                 raw_arxiv_id,
-                error,
             )
 
         arxiv_id = metadata.arxiv_id if metadata else raw_arxiv_id
@@ -57,7 +66,9 @@ class DoclingParser:
 
         logger.debug("  Docling: converting PDF (this is the slowest stage)")
         result = self._converter.convert(str(pdf_path))
-        metadata = metadata or build_fallback_metadata(raw_arxiv_id, result.document.name)
+        metadata = metadata or build_fallback_metadata(
+            raw_arxiv_id, result.document.name
+        )
         logger.debug("  Docling: conversion done, building section tree")
         sections, _ = build_tree(
             result.document,

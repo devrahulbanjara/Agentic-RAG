@@ -1,5 +1,4 @@
 from loguru import logger
-
 from src.generation.context import assemble_context
 from src.llm.base import LLMProvider
 from src.retrieval.schemas import RetrievedChunk

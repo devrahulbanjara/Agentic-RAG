@@ -6,7 +6,6 @@ from google.genai import errors as genai_errors
 from google.genai import types
 from loguru import logger
 from PIL import Image
-
 from src.core.config import settings
 from src.generation.messages import NO_EVIDENCE_REPLY
 from src.llm.base import LLMError, LLMProvider, LLMRateLimitError
@@ -66,7 +65,7 @@ class GeminiProvider(LLMProvider):
             counted = self._client.models.count_tokens(
                 model=self._model, contents=contents
             )
-            return counted.total_tokens
+            return counted.total_tokens or 0
         except Exception:
             text_length = sum(len(part) for part in contents if isinstance(part, str))
             return text_length // _CHARS_PER_TOKEN

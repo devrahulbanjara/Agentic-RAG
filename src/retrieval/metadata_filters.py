@@ -1,5 +1,4 @@
 from qdrant_client import models
-
 from src.llm.schemas import MetadataQuery
 
 

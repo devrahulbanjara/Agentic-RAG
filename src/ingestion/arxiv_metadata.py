@@ -1,20 +1,26 @@
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from xml.etree import ElementTree
 
 import requests
-
 from src.ingestion.schemas import PaperMetadata
 
 ARXIV_API_URL = "http://export.arxiv.org/api/query"
 ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
 ARXIV_NS = {"arxiv": "http://arxiv.org/schemas/atom"}
+ARXIV_ID_RE = re.compile(r"^\d{4}\.\d{4,5}(?:v\d+)?$")
 
 
 @dataclass(frozen=True)
 class ArxivId:
     arxiv_id: str
     version: str | None
+
+
+def looks_like_arxiv_id(raw: str) -> bool:
+    stem = raw.strip().removesuffix(".pdf")
+    return bool(ARXIV_ID_RE.fullmatch(stem))
 
 
 def parse_arxiv_id(raw: str) -> ArxivId:
@@ -35,6 +41,9 @@ def fetch_paper_metadata(
     *,
     timeout: int = 30,
 ) -> PaperMetadata:
+    if not looks_like_arxiv_id(raw_arxiv_id):
+        raise ValueError(f"Not an arXiv-style filename: {raw_arxiv_id}")
+
     parsed = parse_arxiv_id(raw_arxiv_id)
     response = requests.get(
         ARXIV_API_URL,

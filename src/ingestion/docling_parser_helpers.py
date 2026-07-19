@@ -1,6 +1,6 @@
 import re
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from docling_core.types.doc import (
     PictureItem,
@@ -8,7 +8,6 @@ from docling_core.types.doc import (
     TableItem,
     TextItem,
 )
-
 from src.ingestion.schemas import DocumentElement, Section
 
 
@@ -73,7 +72,7 @@ def _make_figure_saver(
     counter = {"idx": 0}
 
     def save(item: PictureItem) -> str | None:
-        if item.image is None:
+        if item.image is None or item.image.pil_image is None:
             return None
         output_dir = figure_dir / arxiv_id
         output_dir.mkdir(parents=True, exist_ok=True)

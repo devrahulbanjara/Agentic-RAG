@@ -23,3 +23,17 @@ Running ingestion the first time will take a bit more time than subsequent runs 
 
 On Windows, if ingestion fails with a `torch` / `c10.dll` load error, install the Microsoft Visual C++ Redistributable:
 https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+## Run Git Hooks Manually
+
+Run the same checks that execute before commit:
+
+```powershell
+uv run --locked pre-commit run --all-files --hook-stage pre-commit
+```
+
+Run the same checks that execute before push:
+
+```powershell
+uv run --locked pre-commit run --all-files --hook-stage pre-push
+```

@@ -1,5 +1,4 @@
 from fastapi import APIRouter
-
 from src.retrieval.dependencies import ReasoningEngineDep
 from src.retrieval.schemas import RetrievalRequest, RoutedRetrievalResponse
 

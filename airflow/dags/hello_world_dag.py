@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 import psycopg2
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-
 from src.core.config import settings
 
 
