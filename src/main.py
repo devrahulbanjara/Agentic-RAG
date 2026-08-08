@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-import gradio as gr
 from fastapi import FastAPI
 from qdrant_client import QdrantClient
 from src.core.config import settings
@@ -11,6 +11,8 @@ from src.llm.factory import get_llm_provider
 from src.retrieval.reasoning import ReasoningEngine
 from src.retrieval.router import router as retrieval_router
 from src.retrieval.service import RetrievalService
+
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 
 @asynccontextmanager
@@ -37,36 +39,4 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Research Assistant", lifespan=lifespan)
 app.include_router(retrieval_router)
-
-
-def _respond(message: str, history: list[dict]) -> str:
-    if not message.strip():
-        return "Enter a query."
-    result = app.state.reasoning_engine.answer(message)
-    if result.message:
-        return result.message
-
-    reply = [result.answer or ""]
-    if result.chunks:
-        reply.append(f"---\n\n_Sources · category: {result.category}_")
-        for number, chunk in enumerate(result.chunks, 1):
-            reply.append(
-                f"**{number}. arxiv:{chunk.arxiv_id}** (score {chunk.reranker_score:.3f})\n\n"
-                f"{chunk.text}"
-            )
-    return "\n\n".join(reply)
-
-
-demo = gr.ChatInterface(
-    fn=_respond,
-    title="Research Paper Retrieval",
-    save_history=True,
-    examples=[
-        "How does multi-head attention work?",
-        "What is the Transformer architecture?",
-        "Explain positional encoding",
-    ],
-    chatbot=gr.Chatbot(height=700, placeholder="Ask anything about indexed papers"),
-    textbox=gr.Textbox(placeholder="Ask a question about research papers...", scale=7),
-)
-app = gr.mount_gradio_app(app, demo, path="/ui")
+app.frontend("/", directory=FRONTEND_DIR)

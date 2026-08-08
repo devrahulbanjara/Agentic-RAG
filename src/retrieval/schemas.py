@@ -18,12 +18,22 @@ class RetrievedChunk(BaseModel):
     section_path: list[str] = []
 
 
+class ReasoningTrace(BaseModel):
+    intent: QueryIntent
+    category: QueryCategory | None = None
+    confidence: float | None = None
+    expansion: str | None = None
+    search_queries: list[str] = []
+    rerank_pool: int | None = None
+    mmr_lambda: float | None = None
+    chunks_kept: int | None = None
+
+
 class RoutedRetrievalResponse(BaseModel):
     query: str
     intent: QueryIntent
     category: QueryCategory | None = None
-    # `message` is a direct reply when no search runs (small talk, out of scope).
-    # `answer` is the generated, cited answer on the retrieval path.
     message: str | None = None
     answer: str | None = None
     chunks: list[RetrievedChunk] = []
+    trace: ReasoningTrace | None = None

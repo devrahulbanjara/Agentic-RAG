@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from time import perf_counter
 from typing import NamedTuple
 
@@ -14,7 +15,11 @@ from src.generation.service import AnswerGenerator
 from src.llm.base import LLMError, LLMProvider
 from src.llm.schemas import QueryCategory, QueryClassification, QueryIntent
 from src.retrieval.metadata_filters import build_qdrant_filter
-from src.retrieval.schemas import RetrievedChunk, RoutedRetrievalResponse
+from src.retrieval.schemas import (
+    ReasoningTrace,
+    RetrievedChunk,
+    RoutedRetrievalResponse,
+)
 from src.retrieval.service import RetrievalService
 from src.retrieval.strategies import (
     DEFAULT_STRATEGY,
@@ -42,22 +47,56 @@ class ReasoningEngine:
         self._settings = settings
 
     def answer(self, query: str) -> RoutedRetrievalResponse:
+        """Kept for callers (the `/retrieve` endpoint) that only want the final response."""
+        response: RoutedRetrievalResponse | None = None
+        for step in self.stream_answer(query):
+            if isinstance(step, RoutedRetrievalResponse):
+                response = step
+        assert response is not None
+        return response
+
+    def stream_answer(
+        self, query: str
+    ) -> Iterator[ReasoningTrace | RoutedRetrievalResponse]:
+        """Yields a `ReasoningTrace` snapshot after each stage, then the final response."""
         logger.info("query received | query={!r}", query)
 
         # if routing is disabled, skip classifications, and fancy things
         if not self._settings.routing_enabled:
             logger.info("routing disabled | using default strategy")
-            return self._run_retrieval(query, None, DEFAULT_STRATEGY)
+            trace = ReasoningTrace(
+                intent=QueryIntent.RETRIEVAL,
+                expansion=DEFAULT_STRATEGY.expansion,
+                rerank_pool=DEFAULT_STRATEGY.rerank_pool,
+                mmr_lambda=DEFAULT_STRATEGY.mmr_lambda,
+            )
+            yield trace.model_copy()
+            yield from self._run_retrieval(query, None, DEFAULT_STRATEGY, trace)
+            return
 
         classification = self._classify(query)
+        trace = ReasoningTrace(
+            intent=classification.intent,
+            category=classification.category,
+            confidence=classification.confidence,
+        )
+        yield trace.model_copy()
 
         if classification.intent is QueryIntent.CONVERSATIONAL:
-            return self._reply(query, classification.intent, CONVERSATIONAL_REPLY)
+            yield self._reply(query, trace, CONVERSATIONAL_REPLY)
+            return
         if classification.intent is QueryIntent.OUT_OF_SCOPE:
-            return self._reply(query, classification.intent, OUT_OF_SCOPE_REPLY)
+            yield self._reply(query, trace, OUT_OF_SCOPE_REPLY)
+            return
 
         strategy, category = self._resolve_strategy(classification)
-        return self._run_retrieval(query, category, strategy)
+        trace.category = category
+        trace.expansion = strategy.expansion
+        trace.rerank_pool = strategy.rerank_pool
+        trace.mmr_lambda = strategy.mmr_lambda
+        yield trace.model_copy()
+
+        yield from self._run_retrieval(query, category, strategy, trace)
 
     def _classify(self, query: str) -> QueryClassification:
         try:
@@ -89,17 +128,21 @@ class ReasoningEngine:
         query: str,
         category: QueryCategory | None,
         strategy: RetrievalStrategy,
-    ) -> RoutedRetrievalResponse:
+        trace: ReasoningTrace,
+    ) -> Iterator[ReasoningTrace | RoutedRetrievalResponse]:
         started = perf_counter()
         metadata_plan = self._metadata_plan(query, category)
         semantic_query = metadata_plan.semantic_query if metadata_plan else query
         search_queries = self._build_search_queries(semantic_query, strategy)
+        trace.search_queries = search_queries
         logger.debug(
             "search queries | expansion={} count={} {}",
             strategy.expansion,
             len(search_queries),
             search_queries,
         )
+        yield trace.model_copy()
+
         chunks = self._retrieval.retrieve(
             query,
             search_queries,
@@ -108,6 +151,9 @@ class ReasoningEngine:
             limit=strategy.final_limit,
             mmr_lambda=strategy.mmr_lambda,
         )
+        trace.chunks_kept = len(chunks)
+        yield trace.model_copy()
+
         answer = self._write_answer(query, chunks)
         logger.info(
             "routed query | category={} expansion={} searches={} chunks={} latency_ms={:.0f}",
@@ -117,12 +163,13 @@ class ReasoningEngine:
             len(chunks),
             (perf_counter() - started) * 1000,
         )
-        return RoutedRetrievalResponse(
+        yield RoutedRetrievalResponse(
             query=query,
             intent=QueryIntent.RETRIEVAL,
             category=category,
             answer=answer,
             chunks=chunks,
+            trace=trace,
         )
 
     def _write_answer(self, query: str, chunks: list[RetrievedChunk]) -> str:
@@ -181,7 +228,9 @@ class ReasoningEngine:
         )
 
     def _reply(
-        self, query: str, intent: QueryIntent, message: str
+        self, query: str, trace: ReasoningTrace, message: str
     ) -> RoutedRetrievalResponse:
-        logger.info("routed query | intent={} (no retrieval)", intent)
-        return RoutedRetrievalResponse(query=query, intent=intent, message=message)
+        logger.info("routed query | intent={} (no retrieval)", trace.intent)
+        return RoutedRetrievalResponse(
+            query=query, intent=trace.intent, message=message, trace=trace
+        )
