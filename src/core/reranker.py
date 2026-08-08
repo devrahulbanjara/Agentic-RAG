@@ -4,7 +4,7 @@ from sentence_transformers import CrossEncoder
 
 class BGEReranker:
     def __init__(self, model_name: str) -> None:
-        self._model = CrossEncoder(model_name)
+        self._model = CrossEncoder(model_name, device="cpu")
 
     def rerank(self, query: str, passages: list[str]) -> list[float]:
         """Score each passage against the query; higher means more relevant."""

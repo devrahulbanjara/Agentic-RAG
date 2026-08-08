@@ -5,12 +5,6 @@ from src.retrieval.schemas import RetrievedChunk
 
 
 class AnswerGenerator:
-    """Turns retrieved chunks into a cited answer grounded in those chunks.
-
-    NOTE: the output guardrails from step 14 (citation validator, hallucination
-    check) will layer on here, around the LLM call.
-    """
-
     def __init__(self, llm: LLMProvider) -> None:
         self._llm = llm
 

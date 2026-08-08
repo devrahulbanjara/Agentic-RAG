@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Research Paper Retrieval</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --border: #e3e3e6;
+    --text: #1f2328;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --user-bg: #2563eb;
+    --user-text: #ffffff;
+    --code-bg: #eef0f3;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    font-weight: 600;
+  }
+  #chat {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-height: calc(100vh - 140px);
+  }
+  .bubble {
+    padding: 12px 16px;
+    border-radius: 12px;
+    line-height: 1.5;
+    max-width: 100%;
+  }
+  .bubble.user {
+    align-self: flex-end;
+    background: var(--user-bg);
+    color: var(--user-text);
+    white-space: pre-wrap;
+  }
+  .bubble.assistant.plain {
+    align-self: flex-start;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    white-space: pre-wrap;
+  }
+  details.bubble.assistant {
+    align-self: flex-start;
+    width: 100%;
+    padding: 0;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  details.bubble.assistant summary {
+    padding: 10px 16px;
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--muted);
+    list-style: none;
+  }
+  details.bubble.assistant summary::-webkit-details-marker { display: none; }
+  details.bubble.assistant summary::before { content: "▸ "; }
+  details.bubble.assistant[open] summary::before { content: "▾ "; }
+  details.bubble.assistant .detail-body {
+    padding: 10px 16px 14px 16px;
+    border-top: 1px solid var(--border);
+  }
+  .detail-body p { margin: 6px 0; }
+  .detail-body ol { margin: 4px 0 10px 20px; padding: 0; }
+  .detail-body li { margin: 2px 0; }
+  .detail-body .muted { color: var(--muted); }
+  .detail-body code {
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+  }
+  .source-entry { margin: 0 0 14px 0; }
+  .source-entry:last-child { margin-bottom: 0; }
+  .source-entry .source-meta { color: var(--muted); margin-bottom: 4px; }
+  .source-entry .source-text {
+    white-space: pre-wrap;
+    background: var(--code-bg);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+  .source-entry + .source-entry { border-top: 1px solid var(--border); padding-top: 12px; }
+  form#composer {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    gap: 8px;
+    padding: 16px 20px;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+  }
+  #query {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    font-size: 14px;
+  }
+  button {
+    padding: 10px 18px;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent);
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+</style>
+</head>
+<body>
+<header>Research Paper Retrieval</header>
+<div id="chat"></div>
+<form id="composer">
+  <input id="query" type="text" placeholder="Ask a question about research papers..." autocomplete="off" />
+  <button id="send" type="submit">Send</button>
+</form>
+
+<script>
+const chat = document.getElementById("chat");
+const form = document.getElementById("composer");
+const input = document.getElementById("query");
+const sendBtn = document.getElementById("send");
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text ?? "";
+  return div.innerHTML;
+}
+
+function addBubble(role, text) {
+  const div = document.createElement("div");
+  div.className = `bubble ${role} plain`;
+  div.textContent = text;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+
+function addCollapsible(title) {
+  const details = document.createElement("details");
+  details.className = "bubble assistant";
+  const summary = document.createElement("summary");
+  summary.textContent = title;
+  const body = document.createElement("div");
+  body.className = "detail-body";
+  details.appendChild(summary);
+  details.appendChild(body);
+  chat.appendChild(details);
+  chat.scrollTop = chat.scrollHeight;
+  return { details, body };
+}
+
+function renderTrace(trace) {
+  if (!trace) return "";
+  const parts = [`<p><strong>Intent:</strong> <code>${escapeHtml(trace.intent)}</code></p>`];
+
+  if (trace.category) {
+    const confidence = trace.confidence != null
+      ? ` <span class="muted">(confidence ${trace.confidence.toFixed(2)})</span>`
+      : "";
+    parts.push(`<p><strong>Category:</strong> <code>${escapeHtml(trace.category)}</code>${confidence}</p>`);
+  }
+
+  if (trace.expansion) {
+    parts.push(`<p><strong>Expansion:</strong> <code>${escapeHtml(trace.expansion)}</code></p>`);
+  }
+
+  if (trace.search_queries && trace.search_queries.length) {
+    const items = trace.search_queries.map((q) => `<li>${escapeHtml(q)}</li>`).join("");
+    parts.push(`<p><strong>Search queries (${trace.search_queries.length}):</strong></p><ol>${items}</ol>`);
+  }
+
+  const bits = [];
+  if (trace.rerank_pool != null) bits.push(`pooled top ${trace.rerank_pool}`);
+  if (trace.mmr_lambda != null) bits.push(`MMR λ=${trace.mmr_lambda}`);
+  if (trace.chunks_kept != null) bits.push(`kept ${trace.chunks_kept} chunk(s)`);
+  if (bits.length) parts.push(`<p><strong>Retrieval:</strong> ${bits.join(", ")}</p>`);
+
+  return parts.join("");
+}
+
+function renderSources(chunks) {
+  return chunks
+    .map((chunk, i) => {
+      const location = (chunk.section_path && chunk.section_path.length)
+        ? chunk.section_path.join(" > ")
+        : chunk.chunk_type;
+      return `
+        <div class="source-entry">
+          <div class="source-meta"><strong>${i + 1}. arxiv:${escapeHtml(chunk.arxiv_id)}</strong> · ${escapeHtml(location)} (score ${chunk.reranker_score.toFixed(3)})</div>
+          <div class="source-text">${escapeHtml(chunk.text)}</div>
+        </div>`;
+    })
+    .join("");
+}
+
+async function ask(query) {
+  addBubble("user", query);
+  sendBtn.disabled = true;
+
+  const { details: thinkingDetails, body: thinkingBody } = addCollapsible("🧠 Thinking");
+
+  try {
+    const response = await fetch("/retrieve/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+    });
+    if (!response.ok || !response.body) {
+      thinkingDetails.remove();
+      addBubble("assistant", `Request failed (${response.status}).`);
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = JSON.parse(line);
+
+        if (event.type === "trace") {
+          thinkingBody.innerHTML = renderTrace(event.trace);
+          chat.scrollTop = chat.scrollHeight;
+        } else if (event.type === "final") {
+          const result = event.response;
+          if (result.trace) thinkingBody.innerHTML = renderTrace(result.trace);
+
+          addBubble("assistant", result.message || result.answer || "");
+
+          if (result.chunks && result.chunks.length) {
+            const { body } = addCollapsible(`📄 Sources · category: ${result.category}`);
+            body.innerHTML = renderSources(result.chunks);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    addBubble("assistant", `Something went wrong: ${error}`);
+  } finally {
+    sendBtn.disabled = false;
+  }
+}
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const query = input.value.trim();
+  if (!query) return;
+  input.value = "";
+  ask(query);
+});
+</script>
+</body>
+</html>
